@@ -10,7 +10,9 @@ import {
   sourceToScreen,
   targetAspect,
   transformedSize,
+  transformedToSource,
 } from './cropMath';
+import type { Rotation } from './types';
 
 const cover = (width: number | null, height: number | null, allowUpscale = false) => ({
   width,
@@ -173,5 +175,37 @@ describe('getViewTransform', () => {
       devicePixelRatio: 2,
     });
     expect(view.deviceScale).toBe(1);
+  });
+});
+
+describe('transformedToSource', () => {
+  const source = { width: 40, height: 20 };
+
+  it('is the identity without a transform', () => {
+    expect(transformedToSource({ x: 3, y: 7 }, source, { rotation: 0, flipH: false, flipV: false })).toEqual({ x: 3, y: 7 });
+  });
+
+  it('maps displayed corners back to the right source corners', () => {
+    // After a 90° clockwise turn the source's top-left corner is at the displayed top-right.
+    const rotated = { rotation: 90 as Rotation, flipH: false, flipV: false };
+    expect(transformedToSource({ x: 20, y: 0 }, source, rotated)).toEqual({ x: 0, y: 0 });
+    expect(transformedToSource({ x: 0, y: 40 }, source, rotated)).toEqual({ x: 40, y: 20 });
+  });
+
+  it('undoes a horizontal flip', () => {
+    const flipped = { rotation: 0 as Rotation, flipH: true, flipV: false };
+    expect(transformedToSource({ x: 0, y: 5 }, source, flipped)).toEqual({ x: 40, y: 5 });
+  });
+
+  it('round-trips with every rotation and flip', () => {
+    for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+      for (const flipH of [false, true]) {
+        const transform = { rotation, flipH, flipV: !flipH };
+        const displayed = transformedSize(source, rotation);
+        const center = transformedToSource({ x: displayed.width / 2, y: displayed.height / 2 }, source, transform);
+        expect(center.x).toBeCloseTo(20);
+        expect(center.y).toBeCloseTo(10);
+      }
+    }
   });
 });

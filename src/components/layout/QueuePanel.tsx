@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
+import { findPreset } from '../../lib/presets';
 import type { QueueItem } from '../../lib/types';
 import { useApp } from '../../state/AppContext';
 import { FilePickers } from '../input/DropZone';
@@ -41,7 +42,7 @@ const statusText = (item: QueueItem): string => {
 };
 
 export const QueuePanel = () => {
-  const { state, dispatch, removeItem } = useApp();
+  const { state, dispatch, removeItem, selectedItem } = useApp();
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -58,6 +59,18 @@ export const QueuePanel = () => {
               <kbd>N</kbd>/<kbd>P</kbd> next/prev
             </span>
           </div>
+          {state.items.length > 1 && selectedItem ? (
+            <Button
+              size="sm"
+              className="mb-1"
+              onClick={() => {
+                dispatch({ type: 'applyPresetToAll', presetId: selectedItem.presetId });
+                dispatch({ type: 'announce', message: `Applied ${findPreset(state.presets, selectedItem.presetId).name} to all images.` });
+              }}
+            >
+              Apply “{findPreset(state.presets, selectedItem.presetId).name}” to all
+            </Button>
+          ) : null}
           <ul aria-label="Image queue" className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1 py-1">
             {state.items.map((item, index) => {
               const selected = item.id === state.selectedId;

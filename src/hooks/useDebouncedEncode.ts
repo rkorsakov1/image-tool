@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { toEncodeSettings } from '../lib/presets';
 import type { QueueItem } from '../lib/types';
-import { getItemPreset } from '../state/appReducer';
 import { useApp } from '../state/AppContext';
+import { encodeQueueItem, toEncodedOutput } from '../state/encoding';
 import { isCancelledError } from '../worker/protocol';
 import type { EncodeHandle } from '../worker/workerClient';
 
@@ -37,14 +36,7 @@ export const useDebouncedEncode = (): PreviewReference | null => {
       if (!item || item.revision !== revision) return;
 
       if (activeRequest.current) processor.cancel(activeRequest.current.requestId);
-      const settings = toEncodeSettings(getItemPreset({ presets: presetsRef.current }, item));
-      const handle = processor.encode({
-        bitmap: item.editedBitmap ?? item.sourceBitmap,
-        transform: item.transform,
-        crop: item.crop,
-        settings,
-        wantReference: true,
-      });
+      const handle = encodeQueueItem(processor, item, presetsRef.current, true);
       activeRequest.current = handle;
       dispatch({ type: 'encodeStarted', id: item.id, revision });
 
@@ -56,21 +48,7 @@ export const useDebouncedEncode = (): PreviewReference | null => {
           return;
         }
         const previousUrl = current.output?.url;
-        const url = URL.createObjectURL(result.blob);
-        dispatch({
-          type: 'encodeFinished',
-          id: item.id,
-          revision,
-          output: {
-            blob: result.blob,
-            url,
-            width: result.width,
-            height: result.height,
-            quality: result.quality,
-            encoder: result.encoder,
-            warning: result.warning,
-          },
-        });
+        dispatch({ type: 'encodeFinished', id: item.id, revision, output: toEncodedOutput(result) });
         if (previousUrl) URL.revokeObjectURL(previousUrl);
         if (result.reference) {
           const bitmap = result.reference;

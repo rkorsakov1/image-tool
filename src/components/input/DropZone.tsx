@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import { useApp } from '../../state/AppContext';
-import { collectDroppedFiles, looksLikeImageFile } from '../../state/ingest';
+import { collectDroppedFiles, compareFilePaths, looksLikeImageFile } from '../../state/ingest';
 import { Button, focusRing } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 
@@ -85,7 +85,7 @@ export const FilePickers = ({ compact = false }: FilePickersProps) => {
 
   const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
-    const files = Array.from(input.files ?? []).filter(looksLikeImageFile);
+    const files = Array.from(input.files ?? []).filter(looksLikeImageFile).sort(compareFilePaths);
     input.value = '';
     if (files.length > 0) await addFiles(files);
   };

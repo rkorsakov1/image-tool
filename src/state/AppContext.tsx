@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { renderFilename } from '../lib/filenameTemplate';
 import { formatBytes } from '../lib/format';
-import type { QueueItem } from '../lib/types';
+import type { EncodedOutput, QueueItem } from '../lib/types';
 import { createWorkerClient, type Processor } from '../worker/workerClient';
 import { appReducer, createInitialState, getItemPreset, type AppAction, type AppState, type Notice } from './appReducer';
 import { decodeImage, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
@@ -15,8 +15,11 @@ type AppContextValue = {
   addFiles: (files: readonly (File | { blob: Blob; name: string })[]) => Promise<void>;
   removeItem: (id: string) => void;
   notify: (tone: Notice['tone'], message: string) => void;
-  outputFilename: (item: QueueItem) => string;
+  /** Filename from the preset's template; pass `output` when it isn't stored on the item yet. */
+  outputFilename: (item: QueueItem, output?: EncodedOutput | null) => string;
   downloadItem: (item: QueueItem) => void;
+  /** Sets (or with null, reverts) an item's retouched image and frees the previous one. */
+  replaceEditedBitmap: (id: string, bitmap: ImageBitmap | null) => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -107,14 +110,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     releaseItem(item);
   }, []);
 
-  const outputFilename = useCallback((item: QueueItem): string => {
+  const outputFilename = useCallback((item: QueueItem, output: EncodedOutput | null = item.output): string => {
     const current = stateRef.current;
     const preset = getItemPreset(current, item);
     const index = current.items.findIndex((candidate) => candidate.id === item.id);
     return renderFilename(preset.filenameTemplate, {
       sourceName: item.sourceName,
-      width: item.output?.width ?? preset.width ?? item.sourceBitmap.width,
-      height: item.output?.height ?? preset.height ?? item.sourceBitmap.height,
+      width: output?.width ?? preset.width ?? item.sourceBitmap.width,
+      height: output?.height ?? preset.height ?? item.sourceBitmap.height,
       presetName: preset.name,
       index: index + 1,
       queueLength: current.items.length,
@@ -133,11 +136,18 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     [outputFilename],
   );
 
+  const replaceEditedBitmap = useCallback((id: string, bitmap: ImageBitmap | null) => {
+    const previous = stateRef.current.items.find((item) => item.id === id)?.editedBitmap ?? null;
+    dispatch({ type: 'setEditedBitmap', id, bitmap });
+    // Close after React has re-rendered with the new bitmap, so nothing draws a closed one.
+    if (previous && previous !== bitmap) setTimeout(() => previous.close(), 1000);
+  }, []);
+
   const selectedItem = state.items.find((item) => item.id === state.selectedId) ?? null;
 
   const value = useMemo<AppContextValue>(
-    () => ({ state, dispatch, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem }),
-    [state, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem],
+    () => ({ state, dispatch, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, replaceEditedBitmap }),
+    [state, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, replaceEditedBitmap],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

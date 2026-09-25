@@ -1,0 +1,330 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { isTextEntryTarget } from '../../hooks/useKeyboardShortcuts';
+import type { MaskHistory } from '../../hooks/useMaskHistory';
+import { useViewTransform } from '../../hooks/useViewTransform';
+import { cn } from '../../lib/cn';
+import { screenToSource, transformedSize, transformedToSource, type Point } from '../../lib/cropMath';
+import { drawTransformed, get2d } from '../../lib/drawing';
+import type { Rect } from '../../lib/inpaint';
+import type { Transform } from '../../lib/types';
+import { ImageCanvas } from '../crop/ImageCanvas';
+import { focusRing } from '../ui/Button';
+import { checkerboardClass } from '../preview/Checkerboard';
+
+export type BrushSettings = { size: number; erase: boolean; soft: boolean };
+
+type MaskEditorProps = {
+  /** Image being edited, in source orientation. */
+  bitmap: ImageBitmap;
+  transform: Transform;
+  /** Source-sized canvas; its alpha channel is the mask. */
+  mask: HTMLCanvasElement;
+  /** 'mask': red overlay of what will be filled. 'alpha': the cut-out itself (Restore/Erase). */
+  variant: 'mask' | 'alpha';
+  brush: BrushSettings;
+  onBrushChange: (brush: BrushSettings) => void;
+  history: MaskHistory;
+  /** When set, clicks pick a point (eyedropper) instead of painting. */
+  onPick?: (point: Point) => void;
+  label: string;
+};
+
+export const MIN_BRUSH = 2;
+export const MAX_BRUSH = 800;
+
+export const defaultBrushSize = (bitmap: { width: number; height: number }): number =>
+  Math.round(Math.min(MAX_BRUSH, Math.max(8, Math.min(bitmap.width, bitmap.height) / 30)));
+
+const stamp = (context: CanvasRenderingContext2D, point: Point, brush: BrushSettings) => {
+  const radius = brush.size / 2;
+  context.globalCompositeOperation = brush.erase ? 'destination-out' : 'source-over';
+  if (brush.soft) {
+    const gradient = context.createRadialGradient(point.x, point.y, 0, point.x, point.y, radius);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.5, 'rgba(255,255,255,1)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = gradient;
+  } else {
+    context.fillStyle = '#ffffff';
+  }
+  context.beginPath();
+  context.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  context.fill();
+};
+
+const growRect = (rect: Rect | null, point: Point, radius: number): Rect => {
+  const left = point.x - radius;
+  const top = point.y - radius;
+  const right = point.x + radius;
+  const bottom = point.y + radius;
+  if (!rect) return { x: left, y: top, width: right - left, height: bottom - top };
+  const x = Math.min(rect.x, left);
+  const y = Math.min(rect.y, top);
+  return { x, y, width: Math.max(rect.x + rect.width, right) - x, height: Math.max(rect.y + rect.height, bottom) - y };
+};
+
+/**
+ * Brush editor over the image, shared by Retouch (fill mask) and Background (alpha refinement).
+ * The mask lives at source resolution and is displayed through the same view transform as the crop editor.
+ */
+export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, history, onPick, label }: MaskEditorProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
+  const image = useMemo(() => transformedSize(bitmap, transform.rotation), [bitmap, transform.rotation]);
+  const { view, devicePixelRatio } = useViewTransform(containerRef, { image });
+  const maskContext = useMemo(() => mask.getContext('2d', { willReadFrequently: true }), [mask]);
+  const stroke = useRef<{ pointerId: number; last: Point; rect: Rect | null } | null>(null);
+  const frame = useRef<number | null>(null);
+  const [cursor, setCursor] = useState<Point | null>(null);
+  const [keyboardCursor, setKeyboardCursor] = useState<Point | null>(null);
+
+  const redraw = useCallback(() => {
+    frame.current = null;
+    const overlay = overlayRef.current;
+    if (!overlay || !view) return;
+    const width = Math.max(1, Math.round(view.displayWidth * devicePixelRatio));
+    const height = Math.max(1, Math.round(view.displayHeight * devicePixelRatio));
+    if (overlay.width !== width || overlay.height !== height) {
+      overlay.width = width;
+      overlay.height = height;
+    }
+    const context = get2d(overlay);
+    context.clearRect(0, 0, width, height);
+    if (variant === 'mask') {
+      drawTransformed(context, mask, transform, view.deviceScale);
+      context.globalCompositeOperation = 'source-in';
+      context.fillStyle = 'rgb(239 68 68)';
+      context.fillRect(0, 0, width, height);
+    } else {
+      drawTransformed(context, bitmap, transform, view.deviceScale);
+      context.globalCompositeOperation = 'destination-in';
+      drawTransformed(context, mask, transform, view.deviceScale);
+    }
+    context.globalCompositeOperation = 'source-over';
+  }, [view, devicePixelRatio, variant, mask, bitmap, transform]);
+
+  const scheduleRedraw = useCallback(() => {
+    if (frame.current === null) frame.current = requestAnimationFrame(redraw);
+  }, [redraw]);
+
+  useEffect(() => {
+    redraw();
+  }, [redraw, history.version]);
+
+  useEffect(() => () => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+  }, []);
+
+  // Brush and history shortcuts while this editor is on screen.
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isTextEntryTarget(event.target) || document.querySelector('dialog[open]')) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (modifier && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) history.redo();
+        else history.undo();
+        return;
+      }
+      if (modifier && key === 'y') {
+        event.preventDefault();
+        history.redo();
+        return;
+      }
+      if (modifier || event.altKey) return;
+      if (event.key === '[' || event.key === ']') {
+        event.preventDefault();
+        const factor = event.key === ']' ? 1.2 : 1 / 1.2;
+        onBrushChange({ ...brush, size: Math.round(Math.min(MAX_BRUSH, Math.max(MIN_BRUSH, brush.size * factor))) });
+        return;
+      }
+      if (key === 'x') onBrushChange({ ...brush, erase: !brush.erase });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [brush, onBrushChange, history]);
+
+  const toSourcePoint = (clientX: number, clientY: number): Point | null => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || !view) return null;
+    const displayed = screenToSource(view, { x: clientX - rect.left, y: clientY - rect.top });
+    return transformedToSource(displayed, bitmap, transform);
+  };
+
+  const paintTo = (point: Point) => {
+    const current = stroke.current;
+    if (!current || !maskContext) return;
+    const distance = Math.hypot(point.x - current.last.x, point.y - current.last.y);
+    const spacing = Math.max(1, brush.size / 6);
+    const steps = Math.max(1, Math.ceil(distance / spacing));
+    for (let step = 1; step <= steps; step += 1) {
+      const t = step / steps;
+      const at = { x: current.last.x + (point.x - current.last.x) * t, y: current.last.y + (point.y - current.last.y) * t };
+      stamp(maskContext, at, brush);
+      current.rect = growRect(current.rect, at, brush.size / 2 + 1);
+    }
+    current.last = point;
+    scheduleRedraw();
+  };
+
+  const startStroke = (point: Point, pointerId: number) => {
+    if (!maskContext) return;
+    history.begin();
+    stamp(maskContext, point, brush);
+    stroke.current = { pointerId, last: point, rect: growRect(null, point, brush.size / 2 + 1) };
+    scheduleRedraw();
+  };
+
+  const endStroke = () => {
+    const current = stroke.current;
+    stroke.current = null;
+    if (current?.rect) history.commit(current.rect);
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const point = toSourcePoint(event.clientX, event.clientY);
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    if (onPick) {
+      onPick(point);
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startStroke(point, event.pointerId);
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) setCursor({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    if (stroke.current?.pointerId !== event.pointerId) return;
+    const events = event.nativeEvent.getCoalescedEvents?.() ?? [event.nativeEvent];
+    for (const coalesced of events.length > 0 ? events : [event.nativeEvent]) {
+      const point = toSourcePoint(coalesced.clientX, coalesced.clientY);
+      if (point) paintTo(point);
+    }
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (stroke.current?.pointerId !== event.pointerId) return;
+    endStroke();
+  };
+
+  /** Keyboard painting: arrows move a brush cursor, Space or Enter paints a dab there. */
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const moves: Record<string, Point> = { ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 }, ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 } };
+    const current = keyboardCursor ?? { x: image.width / 2, y: image.height / 2 };
+    const move = moves[event.key];
+    if (move) {
+      event.preventDefault();
+      const step = Math.max(1, Math.round(brush.size / (event.shiftKey ? 1 : 4)));
+      setKeyboardCursor({
+        x: Math.min(image.width, Math.max(0, current.x + move.x * step)),
+        y: Math.min(image.height, Math.max(0, current.y + move.y * step)),
+      });
+      return;
+    }
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    setKeyboardCursor(current);
+    const point = transformedToSource(current, bitmap, transform);
+    if (onPick) {
+      onPick(point);
+      return;
+    }
+    startStroke(point, -1);
+    endStroke();
+  };
+
+  const cursorSize = view ? brush.size * view.scale : 0;
+  const keyboardScreen = view && keyboardCursor ? { x: view.offsetX + keyboardCursor.x * view.scale, y: view.offsetY + keyboardCursor.y * view.scale } : null;
+
+  return (
+    <div
+      ref={containerRef}
+      role="application"
+      aria-roledescription="brush canvas"
+      aria-label={`${label}. Drag to paint. Keyboard: arrows move the brush, Space paints, X toggles ${variant === 'alpha' ? 'restore/erase' : 'paint/erase'}, [ and ] change the size, Ctrl+Z undoes.`}
+      tabIndex={0}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onPointerLeave={() => setCursor(null)}
+      onKeyDown={handleKeyDown}
+      onBlur={() => setKeyboardCursor(null)}
+      className={cn('relative h-full min-h-72 w-full touch-none overflow-hidden select-none', focusRing, {
+        'cursor-crosshair': Boolean(onPick),
+        'cursor-none': !onPick,
+      })}
+    >
+      {view ? (
+        <>
+          {variant === 'alpha' ? (
+            <div
+              aria-hidden="true"
+              className={cn('absolute', checkerboardClass)}
+              style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }}
+            />
+          ) : null}
+          <ImageCanvas bitmap={bitmap} transform={transform} view={view} className={cn({ 'opacity-20': variant === 'alpha' })} />
+          <canvas
+            ref={overlayRef}
+            aria-hidden="true"
+            className={cn('pointer-events-none absolute', { 'opacity-50': variant === 'mask' })}
+            style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }}
+          />
+          {cursor && !onPick ? (
+            <div
+              aria-hidden="true"
+              className={cn('pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-[0_0_0_1px_rgb(0_0_0/0.5)]', {
+                'border-white': !brush.erase,
+                'border-dashed border-amber-300': brush.erase,
+              })}
+              style={{ left: cursor.x, top: cursor.y, width: cursorSize, height: cursorSize }}
+            />
+          ) : null}
+          {keyboardScreen ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-400"
+              style={{ left: keyboardScreen.x, top: keyboardScreen.y, width: Math.max(8, cursorSize), height: Math.max(8, cursorSize) }}
+            />
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+};
+
+/** The mask's alpha channel as one byte per pixel. */
+export const readMask = (mask: HTMLCanvasElement): Uint8Array => {
+  const context = mask.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Canvas 2D is not available.');
+  const { data } = context.getImageData(0, 0, mask.width, mask.height);
+  const values = new Uint8Array(mask.width * mask.height);
+  for (let index = 0; index < values.length; index += 1) values[index] = data[index * 4 + 3] as number;
+  return values;
+};
+
+/** Creates a source-sized mask canvas, optionally initialized from alpha bytes. */
+export const createMaskCanvas = (width: number, height: number, alpha?: Uint8Array): HTMLCanvasElement => {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  if (!alpha) return canvas;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return canvas;
+  const pixels = context.createImageData(width, height);
+  for (let index = 0; index < alpha.length; index += 1) {
+    const offset = index * 4;
+    pixels.data[offset] = 255;
+    pixels.data[offset + 1] = 255;
+    pixels.data[offset + 2] = 255;
+    pixels.data[offset + 3] = alpha[index] as number;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas;
+};

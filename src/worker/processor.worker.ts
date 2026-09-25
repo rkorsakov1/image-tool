@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-import { runEncodeJob, offscreenEnv } from './pipeline';
+import { createZip } from '../lib/zip';
+import { offscreenEnv, runComposeJob, runEncodeJob, runFillJob } from './pipeline';
 import { createCancelledError, isCancelledError, type WorkerRequest, type WorkerResponse } from './protocol';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -30,6 +31,48 @@ const handleEncode = async (request: Extract<WorkerRequest, { type: 'encode' }>)
   }
 };
 
+const postError = (requestId: number, error: unknown): void =>
+  post({ type: 'error', requestId, message: error instanceof Error ? error.message : String(error), cancelled: false });
+
+const handleFill = async (request: Extract<WorkerRequest, { type: 'fill' }>): Promise<void> => {
+  const { requestId, payload } = request;
+  try {
+    const result = await runFillJob(payload, offscreenEnv);
+    post({ type: 'filled', requestId, result }, [result.bitmap]);
+  } catch (error) {
+    postError(requestId, error);
+  } finally {
+    payload.bitmap.close();
+  }
+};
+
+const handleCompose = async (request: Extract<WorkerRequest, { type: 'compose' }>): Promise<void> => {
+  const { requestId, payload } = request;
+  try {
+    const result = await runComposeJob(payload, offscreenEnv);
+    post({ type: 'composed', requestId, result }, [result.bitmap]);
+  } catch (error) {
+    postError(requestId, error);
+  } finally {
+    payload.bitmap.close();
+  }
+};
+
+const handleZip = async (request: Extract<WorkerRequest, { type: 'zip' }>): Promise<void> => {
+  try {
+    post({ type: 'zipped', requestId: request.requestId, result: { blob: createZip(request.payload.entries) } });
+  } catch (error) {
+    postError(request.requestId, error);
+  }
+};
+
+const handleRequest = (request: Exclude<WorkerRequest, { type: 'cancel' }>): Promise<void> => {
+  if (request.type === 'encode') return handleEncode(request);
+  if (request.type === 'fill') return handleFill(request);
+  if (request.type === 'compose') return handleCompose(request);
+  return handleZip(request);
+};
+
 scope.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   if (request.type === 'cancel') {
@@ -37,5 +80,5 @@ scope.onmessage = (event: MessageEvent<WorkerRequest>) => {
     return;
   }
   // Jobs run one at a time, in order; the newest preview request cancels older ones.
-  queue = queue.then(() => handleEncode(request));
+  queue = queue.then(() => handleRequest(request));
 };

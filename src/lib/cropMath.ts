@@ -285,3 +285,22 @@ export const cropsEqual = (a: CropRect | null, b: CropRect | null): boolean => {
     Math.abs(a.height - b.height) < 0.5
   );
 };
+
+/**
+ * Maps a point in the transformed (rotated/flipped, as displayed) image back to source pixels.
+ * Inverse of drawTransformed: rotation first, then flips in the rotated orientation.
+ */
+export const transformedToSource = (point: Point, source: Size, transform: Transform): Point => {
+  const displayed = transformedSize(source, transform.rotation);
+  let x = point.x - displayed.width / 2;
+  let y = point.y - displayed.height / 2;
+  if (transform.flipH) x = -x;
+  if (transform.flipV) y = -y;
+  const angle = (-transform.rotation * Math.PI) / 180;
+  const cos = Math.round(Math.cos(angle));
+  const sin = Math.round(Math.sin(angle));
+  return {
+    x: x * cos - y * sin + source.width / 2,
+    y: x * sin + y * cos + source.height / 2,
+  };
+};

@@ -95,7 +95,29 @@ const packages = [
       { from: 'codec/LICENSE.codec.md' },
     ],
   },
+  {
+    name: 'onnxruntime-web',
+    version: '1.30.0',
+    license: 'MIT (Copyright (c) Microsoft Corporation)',
+    url: 'https://github.com/microsoft/onnxruntime/tree/v1.30.0/js/web',
+    dest: 'public/vendor/ort@1.30.0',
+    // The WebGPU build: one asyncify wasm serves both the WebGPU and the WASM (CPU) providers.
+    files: [
+      { from: 'dist/ort.webgpu.min.mjs' },
+      { from: 'dist/ort-wasm-simd-threaded.asyncify.mjs' },
+      { from: 'dist/ort-wasm-simd-threaded.asyncify.wasm' },
+    ],
+    // The npm package ships no LICENSE file; take it from the tagged source.
+    extraDownloads: [{ url: 'https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/LICENSE', to: 'LICENSE' }],
+  },
 ];
+
+/**
+ * Assets that don't come from npm. The script only hashes them for VENDOR.md;
+ * how they were produced is documented in scripts/vendor-manual.md.
+ * @type {{ name: string; dir: string }[]}
+ */
+const manualAssets = [{ name: 'ISNet general-use, 8-bit weights', dir: 'public/models/isnet-general-use-wq8' }];
 
 const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -122,6 +144,9 @@ const vendorPackages = () => {
         const target = join(destDir, file.to ?? file.from.split('/').pop());
         cpSync(join(srcDir, file.from), target);
         if (file.dts) writeFileSync(target.replace(/\.js$/, '.d.ts'), file.dts);
+      }
+      for (const download of pkg.extraDownloads ?? []) {
+        execSync(`curl -fsSL -o "${join(destDir, download.to)}" "${download.url}"`, { stdio: 'inherit' });
       }
       console.log(`Vendored ${pkg.name}@${pkg.version} → ${pkg.dest}`);
     }
@@ -151,7 +176,18 @@ ${rows}
   });
 
   const manualPath = join(root, 'scripts', 'vendor-manual.md');
-  const manual = existsSync(manualPath) ? `\n${readFileSync(manualPath, 'utf8')}` : '';
+  const manualText = existsSync(manualPath) ? readFileSync(manualPath, 'utf8') : '';
+  const manualHashes = manualAssets
+    .filter((asset) => existsSync(join(root, asset.dir)))
+    .map((asset) => {
+      const dir = join(root, asset.dir);
+      const rows = listFiles(dir)
+        .map((file) => `| \`${relative(dir, file).split(sep).join('/')}\` | ${statSync(file).size} | \`${sha256(file)}\` |`)
+        .join('\n');
+      return `#### Files: ${asset.name} (\`${asset.dir}/\`)\n\n| File | Bytes | SHA-256 |\n|---|---:|---|\n${rows}\n`;
+    })
+    .join('\n');
+  const manual = manualText ? `\n${manualText}\n${manualHashes}` : '';
 
   return `# Vendored runtime assets
 
@@ -163,8 +199,8 @@ app, with no runtime or build-time network access to package registries or CDNs.
 
 Only the **single-threaded encoder** builds are vendored: GitHub Pages can't send
 COOP/COEP headers, so \`SharedArrayBuffer\` (and therefore WASM threads) is unavailable.
-The jSquash JS wrappers are *not* vendored — they pull in \`wasm-feature-detect\` and
-multi-thread code paths. \`src/worker/codecs.ts\` drives the Emscripten glue directly,
+ONNX Runtime likewise runs with \`numThreads = 1\`. The jSquash JS wrappers are *not*
+vendored — they pull in \`wasm-feature-detect\` and multi-thread code paths. \`src/worker/codecs.ts\` drives the Emscripten glue directly,
 using the same default options as the upstream wrappers.
 
 ${sections.join('\n')}${manual}`;

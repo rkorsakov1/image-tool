@@ -57,6 +57,10 @@ const walkEntry = async (entry: FileSystemEntry): Promise<File[]> => {
   return files;
 };
 
+/** Natural order by folder path then name, so "Frame 2" comes before "Frame 10". */
+export const compareFilePaths = (a: File, b: File): number =>
+  (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, undefined, { numeric: true });
+
 /** Files from a drop, recursing into dropped folders. Sorted by path within each folder. */
 export const collectDroppedFiles = async (dataTransfer: DataTransfer): Promise<File[]> => {
   const items = Array.from(dataTransfer.items).filter((item) => item.kind === 'file');
@@ -67,7 +71,7 @@ export const collectDroppedFiles = async (dataTransfer: DataTransfer): Promise<F
   for (const [index, entry] of entries.entries()) {
     if (entry) {
       const found = await walkEntry(entry);
-      if (entry.isDirectory) found.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      if (entry.isDirectory) found.sort(compareFilePaths);
       files.push(...found);
       continue;
     }

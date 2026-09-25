@@ -1,16 +1,31 @@
-import type { EncodeJob, EncodeResult, WorkerRequest, WorkerResponse } from './protocol';
+import type {
+  ComposeJob,
+  ComposeResult,
+  EncodeJob,
+  EncodeResult,
+  FillJob,
+  FillResult,
+  WorkerRequest,
+  WorkerResponse,
+  ZipJob,
+  ZipResult,
+} from './protocol';
 import { createCancelledError } from './protocol';
 
 export type EncodeHandle = { requestId: number; promise: Promise<EncodeResult> };
 
 export type Processor = {
   encode: (job: EncodeJob) => EncodeHandle;
+  fill: (job: FillJob) => Promise<FillResult>;
+  compose: (job: ComposeJob) => Promise<ComposeResult>;
+  zip: (job: ZipJob) => Promise<ZipResult>;
   cancel: (requestId: number) => void;
   /** 'worker' normally; 'main-thread' when OffscreenCanvas 2D isn't available. */
   mode: 'worker' | 'main-thread';
 };
 
-type Pending = { resolve: (result: EncodeResult) => void; reject: (error: Error) => void };
+type AnyResult = EncodeResult | FillResult | ComposeResult | ZipResult;
+type Pending = { resolve: (result: AnyResult) => void; reject: (error: Error) => void };
 
 const supportsOffscreen2d = (): boolean => {
   try {
@@ -30,11 +45,11 @@ const createWorkerProcessor = (): Processor => {
     const entry = pending.get(response.requestId);
     if (!entry) return;
     pending.delete(response.requestId);
-    if (response.type === 'encoded') {
-      entry.resolve(response.result);
+    if (response.type === 'error') {
+      entry.reject(response.cancelled ? createCancelledError() : new Error(response.message));
       return;
     }
-    entry.reject(response.cancelled ? createCancelledError() : new Error(response.message));
+    entry.resolve(response.result);
   };
 
   worker.onerror = (event) => {
@@ -43,21 +58,27 @@ const createWorkerProcessor = (): Processor => {
     pending.clear();
   };
 
-  const send = (request: WorkerRequest) => worker.postMessage(request);
+  /** Posts a request and returns a promise for its response, keyed by request id. */
+  const request = <T extends AnyResult>(build: (requestId: number) => WorkerRequest, transfer: Transferable[] = []) => {
+    const requestId = nextId;
+    nextId += 1;
+    const promise = new Promise<T>((resolve, reject) => {
+      pending.set(requestId, { resolve: resolve as Pending['resolve'], reject });
+    });
+    worker.postMessage(build(requestId), transfer);
+    return { requestId, promise };
+  };
 
   return {
     mode: 'worker',
-    encode: (job) => {
-      const requestId = nextId;
-      nextId += 1;
-      const promise = new Promise<EncodeResult>((resolve, reject) => {
-        pending.set(requestId, { resolve, reject });
-      });
-      // The bitmap is cloned by structured clone, so the main thread keeps its copy.
-      send({ type: 'encode', requestId, payload: job });
-      return { requestId, promise };
-    },
-    cancel: (requestId) => send({ type: 'cancel', requestId }),
+    // The bitmap is cloned by structured clone, so the main thread keeps its copy.
+    encode: (job) => request<EncodeResult>((requestId) => ({ type: 'encode', requestId, payload: job })),
+    fill: (job) => request<FillResult>((requestId) => ({ type: 'fill', requestId, payload: job }), [job.mask.buffer]).promise,
+    compose: (job) => request<ComposeResult>((requestId) => ({ type: 'compose', requestId, payload: job }), [job.alpha.buffer]).promise,
+    // Entry buffers are transferred: the caller must not reuse them.
+    zip: (job) =>
+      request<ZipResult>((requestId) => ({ type: 'zip', requestId, payload: job }), job.entries.map((entry) => entry.data.buffer)).promise,
+    cancel: (requestId) => worker.postMessage({ type: 'cancel', requestId } satisfies WorkerRequest),
   };
 };
 
@@ -67,12 +88,18 @@ const createMainThreadProcessor = (): Processor => {
   let nextId = 1;
   let queue: Promise<unknown> = Promise.resolve();
 
+  const enqueue = <T,>(run: () => Promise<T>): Promise<T> => {
+    const promise = queue.then(run, run);
+    queue = promise.catch(() => undefined);
+    return promise;
+  };
+
   return {
     mode: 'main-thread',
     encode: (job) => {
       const requestId = nextId;
       nextId += 1;
-      const run = async (): Promise<EncodeResult> => {
+      const promise = enqueue(async () => {
         const { runEncodeJob, domEnv } = await import('./pipeline');
         const checkpoint = async () => {
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -84,11 +111,24 @@ const createMainThreadProcessor = (): Processor => {
         } finally {
           cancelled.delete(requestId);
         }
-      };
-      const promise = queue.then(run, run);
-      queue = promise.catch(() => undefined);
+      });
       return { requestId, promise };
     },
+    fill: (job) =>
+      enqueue(async () => {
+        const { runFillJob, domEnv } = await import('./pipeline');
+        return runFillJob(job, domEnv);
+      }),
+    compose: (job) =>
+      enqueue(async () => {
+        const { runComposeJob, domEnv } = await import('./pipeline');
+        return runComposeJob(job, domEnv);
+      }),
+    zip: (job) =>
+      enqueue(async () => {
+        const { createZip } = await import('../lib/zip');
+        return { blob: createZip(job.entries) };
+      }),
     cancel: (requestId) => {
       cancelled.add(requestId);
     },

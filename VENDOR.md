@@ -8,8 +8,8 @@ app, with no runtime or build-time network access to package registries or CDNs.
 
 Only the **single-threaded encoder** builds are vendored: GitHub Pages can't send
 COOP/COEP headers, so `SharedArrayBuffer` (and therefore WASM threads) is unavailable.
-The jSquash JS wrappers are *not* vendored — they pull in `wasm-feature-detect` and
-multi-thread code paths. `src/worker/codecs.ts` drives the Emscripten glue directly,
+ONNX Runtime likewise runs with `numThreads = 1`. The jSquash JS wrappers are *not*
+vendored — they pull in `wasm-feature-detect` and multi-thread code paths. `src/worker/codecs.ts` drives the Emscripten glue directly,
 using the same default options as the upstream wrappers.
 
 ### @jsquash/jpeg@1.6.0
@@ -77,3 +77,58 @@ using the same default options as the upstream wrappers.
 | `squoosh_oxipng.d.ts` | 294 | `5fe71a895030629b898647ecda35e32995266449609a6c96cb0a3b6e83ecfaca` |
 | `squoosh_oxipng.js` | 6307 | `ac29a688c0311c09a809e33d06c9702e84c9242169f81a04589d69a8ad6a782b` |
 | `squoosh_oxipng_bg.wasm` | 164172 | `5ea3e53c0b4fc1b4e8d1511d35b89329d9376bec75a9c4d3c054774487e5f9a3` |
+
+### onnxruntime-web@1.30.0
+
+- **Source package:** `onnxruntime-web` (npm)
+- **Exact version:** 1.30.0
+- **License:** MIT (Copyright (c) Microsoft Corporation)
+- **Source URL:** https://github.com/microsoft/onnxruntime/tree/v1.30.0/js/web
+- **Location:** `public/vendor/ort@1.30.0/`
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `LICENSE` | 1073 | `2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c` |
+| `ort-wasm-simd-threaded.asyncify.mjs` | 53057 | `3d1c85995364bb643302fc6fd877a0c3ba5ae72401815e0f24828a53d9191e28` |
+| `ort-wasm-simd-threaded.asyncify.wasm` | 26781914 | `39f9f0894d478800487ed9f7dbe92618498db320cf55c8e3d89adff8dce658da` |
+| `ort.webgpu.min.mjs` | 66349 | `3dffff71811bc13a3a3d9591c57ca5ee5735b8f5f3eaf789510b02bb040ae3a0` |
+
+### Background-removal model: ISNet general-use (DIS), 8-bit weights
+
+- **Model:** ISNet, "general use" weights from *Highly Accurate Dichotomous Image Segmentation* (DIS), Qin et al., ECCV 2022
+- **Weights license:** Apache-2.0 — https://github.com/xuebinqin/DIS/blob/main/LICENSE.md (copy in `LICENSE`)
+- **ONNX export used as input:** `isnet-general-use.onnx` from rembg (MIT), release `v0.0.0`:
+  https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx
+  (178,648,008 bytes, SHA-256 `60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a`)
+- **Conversion:** `python scripts/quantize_weights.py isnet-general-use.onnx model.onnx`
+  (onnx 1.23.0). Weight-only, per-output-channel 8-bit: 117 weight tensors become `uint8` +
+  `DequantizeLinear`. Compute stays fp32, so it runs on both the WASM and WebGPU providers.
+  The session sets `session.disable_quant_qdq = 1` so ONNX Runtime constant-folds the
+  dequantization at load time (measured: same speed as the fp32 model).
+- **Location:** `public/models/isnet-general-use-wq8/model.onnx` (46.7 MB, under GitHub's 50 MB warning)
+- **Input:** `input_image`, float32 `[1, 3, 1024, 1024]`, RGB, CHW.
+  Normalization (as in rembg): `x = pixel / max(pixel)`, then `(x - 0.5) / 1.0` per channel.
+- **Output:** `output_image`, float32 `[1, 1, 1024, 1024]`; min-max normalized to 0…1 and used as alpha.
+- **Config:** `SEGMENTATION_MODEL` in `src/worker/segmentationModel.ts`.
+
+#### Why this model
+
+| Candidate | License | Size | Result |
+|---|---|---|---|
+| RMBG-1.4 / 2.0 (BRIA) | non-commercial | — | excluded by license |
+| BiRefNet-lite (onnx-community) | MIT | 224 MB fp32, 115 MB fp16 | over 100 MB; weight-only 8-bit only reached 174 MB |
+| ISNet (onnx-community repack) | labelled AGPL-3.0 | 44–176 MB | excluded by license label |
+| **ISNet general-use (rembg export of DIS weights)** | **Apache-2.0** | **46.7 MB after 8-bit weights** | **chosen** |
+| U²-Netp | Apache-2.0 | 4.6 MB | fast, but IoU vs ISNet fell to 0.22 on a cluttered test photo |
+
+Quality check of the 8-bit file against the original fp32 model (ONNX Runtime CPU, masks
+thresholded at 0.5, scikit-image sample photos): IoU 1.000 / 0.998 / 1.000 / 0.991
+(astronaut / chelsea / coffee / rocket), mean absolute alpha difference 0.0008.
+Dynamic int8 quantization (ConvInteger) was also tried: slightly worse (IoU down to 0.973) and ~3× slower.
+
+#### Files: ISNet general-use, 8-bit weights (`public/models/isnet-general-use-wq8/`)
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `LICENSE` | 11357 | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+| `model.onnx` | 46736138 | `5cae4397cb6474a4e8322e8b4aa335762ff83ba0f5e86fd092c984c534a7d4d5` |

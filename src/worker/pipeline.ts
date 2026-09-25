@@ -4,11 +4,12 @@
 import { resolveOutputGeometry, transformedSize } from '../lib/cropMath';
 import { drawTransformed, get2d, hasTransparency, isIdentityTransform, type Surface } from '../lib/drawing';
 import { formatBytes, FORMAT_LABELS, FORMAT_MIME } from '../lib/format';
+import { flatFill, harmonicFill, ringMedianColor } from '../lib/inpaint';
 import { findQualityForTarget } from '../lib/qualitySearch';
 import { unsharpMask } from '../lib/sharpen';
 import type { CropRect, OutputFormat } from '../lib/types';
 import { encodeRaw, optimisePng } from './codecs';
-import type { EncodeJob, EncodeResult } from './protocol';
+import type { ComposeJob, ComposeResult, EncodeJob, EncodeResult, FillJob, FillResult } from './protocol';
 
 export type CanvasEnv = {
   create: (width: number, height: number) => Surface;
@@ -204,4 +205,50 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
     upscaleCapped: geometry.upscaleCapped,
     reference,
   };
+};
+
+/** Object removal: fills the masked pixels and returns the edited image. */
+export const runFillJob = async (job: FillJob, env: CanvasEnv): Promise<FillResult> => {
+  const { width, height } = job.bitmap;
+  if (job.mask.length !== width * height) throw new Error('The mask does not match the image size.');
+  const canvas = env.create(width, height);
+  const context = get2d(canvas, { willReadFrequently: true });
+  context.drawImage(job.bitmap, 0, 0);
+  const pixels = context.getImageData(0, 0, width, height);
+
+  let color: [number, number, number] | null = null;
+  if (job.method === 'flat') {
+    color = job.color ?? ringMedianColor(pixels.data, width, height, job.mask);
+    if (!color) throw new Error('Nothing to fill: paint over the object first.');
+    flatFill(pixels.data, job.mask, color);
+  } else if (!harmonicFill(pixels.data, width, height, job.mask)) {
+    throw new Error('Nothing to fill: paint over the object first, leaving some background around it.');
+  }
+
+  context.putImageData(pixels, 0, 0);
+  const bitmap = await env.toBitmap(canvas);
+  return { bitmap, color };
+};
+
+/** Background removal: replaces the alpha channel, optionally flattening onto a color. */
+export const runComposeJob = async (job: ComposeJob, env: CanvasEnv): Promise<ComposeResult> => {
+  const { width, height } = job.bitmap;
+  if (job.alpha.length !== width * height) throw new Error('The mask does not match the image size.');
+  const canvas = env.create(width, height);
+  const context = get2d(canvas, { willReadFrequently: true });
+  context.drawImage(job.bitmap, 0, 0);
+  const pixels = context.getImageData(0, 0, width, height);
+  for (let index = 0; index < job.alpha.length; index += 1) pixels.data[index * 4 + 3] = job.alpha[index] as number;
+  context.putImageData(pixels, 0, 0);
+
+  if (job.background) {
+    const flattened = env.create(width, height);
+    const flatContext = get2d(flattened);
+    flatContext.fillStyle = job.background;
+    flatContext.fillRect(0, 0, width, height);
+    flatContext.drawImage(canvas, 0, 0);
+    releaseCanvas(canvas);
+    return { bitmap: await env.toBitmap(flattened) };
+  }
+  return { bitmap: await env.toBitmap(canvas) };
 };

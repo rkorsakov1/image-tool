@@ -22,12 +22,47 @@ export type EncodeResult = {
   reference: ImageBitmap | null;
 };
 
+export type FillMethod = 'flat' | 'smooth';
+
+export type FillJob = {
+  /** The image to edit, in source orientation (before rotate/flip). */
+  bitmap: ImageBitmap;
+  /** One byte per source pixel: 0 = keep, 255 = fill, in between = soft edge. Transferred. */
+  mask: Uint8Array;
+  method: FillMethod;
+  /** Flat fill color; null = per-channel median of a 4 px ring around the mask. */
+  color: [number, number, number] | null;
+};
+
+export type FillResult = { bitmap: ImageBitmap; color: [number, number, number] | null };
+
+export type ComposeJob = {
+  /** RGB source in source orientation. */
+  bitmap: ImageBitmap;
+  /** One byte per pixel, used as the new alpha. Transferred. */
+  alpha: Uint8Array;
+  /** Hex color to composite over, or null to keep transparency. */
+  background: string | null;
+};
+
+export type ComposeResult = { bitmap: ImageBitmap };
+
+export type ZipJob = { entries: { name: string; data: Uint8Array }[] };
+
+export type ZipResult = { blob: Blob };
+
 export type WorkerRequest =
   | { type: 'encode'; requestId: number; payload: EncodeJob }
+  | { type: 'fill'; requestId: number; payload: FillJob }
+  | { type: 'compose'; requestId: number; payload: ComposeJob }
+  | { type: 'zip'; requestId: number; payload: ZipJob }
   | { type: 'cancel'; requestId: number };
 
 export type WorkerResponse =
   | { type: 'encoded'; requestId: number; result: EncodeResult }
+  | { type: 'filled'; requestId: number; result: FillResult }
+  | { type: 'composed'; requestId: number; result: ComposeResult }
+  | { type: 'zipped'; requestId: number; result: ZipResult }
   | { type: 'error'; requestId: number; message: string; cancelled: boolean };
 
 export const CANCELLED_MESSAGE = 'Cancelled';

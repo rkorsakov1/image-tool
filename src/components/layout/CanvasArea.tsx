@@ -8,11 +8,15 @@ import { useApp } from '../../state/AppContext';
 import { CropEditor } from '../crop/CropEditor';
 import { EmptyDropZone } from '../input/DropZone';
 import { CompareView } from '../preview/CompareView';
+import { BackgroundPanel } from '../retouch/BackgroundPanel';
+import { RetouchPanel } from '../retouch/RetouchPanel';
 import { Button, focusRing } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 
 export const MODES: { mode: Mode; label: string; key: string }[] = [
   { mode: 'crop', label: 'Crop', key: 'C' },
+  { mode: 'retouch', label: 'Retouch', key: 'E' },
+  { mode: 'background', label: 'Background', key: 'B' },
   { mode: 'compare', label: 'Compare', key: 'V' },
 ];
 
@@ -149,15 +153,22 @@ export const CanvasArea = ({ reference }: { reference: PreviewReference | null }
           {selectedItem.sourceName} · {selectedItem.sourceBitmap.width} × {selectedItem.sourceBitmap.height}
         </p>
       </div>
-      {mode === 'crop' ? <CropToolbar item={selectedItem} preset={preset} /> : null}
-      <div
-        id="editor-panel"
-        role="tabpanel"
-        aria-labelledby={`tab-${mode}`}
-        className="min-h-72 flex-1 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-950"
-      >
-        {mode === 'crop' ? <CropEditor item={selectedItem} preset={preset} /> : null}
-        {mode === 'compare' ? <CompareView item={selectedItem} reference={reference} /> : null}
+      <div id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} className="flex min-h-72 flex-1 flex-col gap-2">
+        {mode === 'crop' ? (
+          <>
+            <CropToolbar item={selectedItem} preset={preset} />
+            <div className="min-h-72 flex-1 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-950">
+              <CropEditor item={selectedItem} preset={preset} />
+            </div>
+          </>
+        ) : null}
+        {mode === 'retouch' ? <RetouchPanel key={selectedItem.id} item={selectedItem} /> : null}
+        {mode === 'background' ? <BackgroundPanel key={selectedItem.id} item={selectedItem} /> : null}
+        {mode === 'compare' ? (
+          <div className="min-h-72 flex-1 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-950">
+            <CompareView item={selectedItem} reference={reference} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

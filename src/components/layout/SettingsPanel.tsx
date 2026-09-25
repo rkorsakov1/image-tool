@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { describeProgress, supportsDirectoryExport, useBatchExport } from '../../hooks/useBatchExport';
 import { BUILTIN_PRESETS, findPreset, isBuiltinPreset } from '../../lib/presets';
 import type { Preset, QueueItem } from '../../lib/types';
 import { getItemPreset } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
 import { canCopyImages, copyImageToClipboard } from '../../state/clipboard';
+import { clearDownloadedModels } from '../../worker/segmentClient';
 import { OutputCard } from '../preview/OutputCard';
 import { PresetForm } from '../presets/PresetForm';
 import { PresetManagerDialog } from '../presets/PresetManagerDialog';
@@ -67,6 +69,33 @@ const ModifiedBar = ({ item, onSaveAsNew }: { item: QueueItem; onSaveAsNew: () =
         </Button>
       </div>
     </div>
+  );
+};
+
+const BatchExport = () => {
+  const { state } = useApp();
+  const { exportZip, exportToFolder, progress } = useBatchExport();
+  const count = state.items.length;
+  if (count < 2) return null;
+  return (
+    <section aria-labelledby="batch-heading" className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+      <h3 id="batch-heading" className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+        All images ({count})
+      </h3>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" className="flex-1" disabled={progress !== null} onClick={exportZip}>
+          <Icon name="zip" /> Export all as ZIP
+        </Button>
+        {supportsDirectoryExport() ? (
+          <Button className="flex-1" disabled={progress !== null} onClick={exportToFolder}>
+            <Icon name="folder" /> Save to folder…
+          </Button>
+        ) : null}
+      </div>
+      <p aria-live="polite" className="text-xs text-slate-500 dark:text-slate-400">
+        {progress ? describeProgress(progress) : 'Each image uses its own preset, crop and edits.'}
+      </p>
+    </section>
   );
 };
 
@@ -163,6 +192,7 @@ export const SettingsPanel = () => {
               <Icon name="copy" /> Copy
             </Button>
           </div>
+          <BatchExport />
         </>
       ) : null}
 
@@ -177,6 +207,17 @@ export const SettingsPanel = () => {
           <li>Colors are converted to sRGB. Wide-gamut (Display P3) sources may shift slightly.</li>
           <li>The size shown is the exact size of the file you download.</li>
         </ul>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mt-2"
+          onClick={async () => {
+            const cleared = await clearDownloadedModels();
+            notify('info', cleared ? 'Downloaded models cleared.' : 'No downloaded models to clear.');
+          }}
+        >
+          Clear downloaded models
+        </Button>
       </details>
 
       <PresetManagerDialog open={managerOpen} onClose={() => setManagerOpen(false)} />
