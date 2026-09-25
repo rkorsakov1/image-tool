@@ -15,7 +15,7 @@ A client-side tool for cropping, resizing, compressing and retouching images. Ev
 - **Works offline** once loaded, and installs as an app. In Chromium, installed LocalCrop appears in "Open with…" for images.
 - **No metadata leaks:** EXIF, XMP, IPTC and GPS never reach the output, because it's rebuilt from decoded pixels.
 
-Keyboard shortcuts are listed in the app (press `?`). See [SCOPE.md](SCOPE.md) for the full specification and [VENDOR.md](VENDOR.md) for the vendored runtime assets and model provenance.
+Keyboard shortcuts are listed in the app (press `?`). See [SCOPE.md](SCOPE.md) for the full specification, [VENDOR.md](VENDOR.md) for the vendored runtime assets and model provenance, and [docs/design-brief.md](docs/design-brief.md) for the UI redesign brief.
 
 ## Development
 
