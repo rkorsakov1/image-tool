@@ -1,0 +1,207 @@
+// The encode pipeline, independent of where it runs: in the processor worker with
+// OffscreenCanvas, or on the main thread with <canvas> when OffscreenCanvas 2D is missing.
+
+import { resolveOutputGeometry, transformedSize } from '../lib/cropMath';
+import { drawTransformed, get2d, hasTransparency, isIdentityTransform, type Surface } from '../lib/drawing';
+import { formatBytes, FORMAT_LABELS, FORMAT_MIME } from '../lib/format';
+import { findQualityForTarget } from '../lib/qualitySearch';
+import { unsharpMask } from '../lib/sharpen';
+import type { CropRect, OutputFormat } from '../lib/types';
+import { encodeRaw, optimisePng } from './codecs';
+import type { EncodeJob, EncodeResult } from './protocol';
+
+export type CanvasEnv = {
+  create: (width: number, height: number) => Surface;
+  toBlob: (canvas: Surface, type: string, quality?: number) => Promise<Blob>;
+  toBitmap: (canvas: Surface) => Promise<ImageBitmap>;
+};
+
+export const offscreenEnv: CanvasEnv = {
+  create: (width, height) => new OffscreenCanvas(width, height),
+  toBlob: (canvas, type, quality) => (canvas as OffscreenCanvas).convertToBlob({ type, quality }),
+  toBitmap: async (canvas) => (canvas as OffscreenCanvas).transferToImageBitmap(),
+};
+
+export const domEnv: CanvasEnv = {
+  create: (width, height) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  },
+  toBlob: (canvas, type, quality) =>
+    new Promise((resolve, reject) => {
+      (canvas as HTMLCanvasElement).toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Canvas export failed.'))), type, quality);
+    }),
+  toBitmap: (canvas) => createImageBitmap(canvas),
+};
+
+/** Called between expensive steps; throws to abort a superseded job. */
+export type Checkpoint = () => Promise<void>;
+
+type DrawSource = CanvasImageSource & { width: number; height: number };
+
+const releaseCanvas = (canvas: Surface): void => {
+  canvas.width = 0;
+  canvas.height = 0;
+};
+
+const applyTransform = (env: CanvasEnv, job: EncodeJob): DrawSource => {
+  if (isIdentityTransform(job.transform)) return job.bitmap;
+  const size = transformedSize(job.bitmap, job.transform.rotation);
+  const canvas = env.create(size.width, size.height);
+  drawTransformed(get2d(canvas), job.bitmap, job.transform);
+  return canvas;
+};
+
+/**
+ * Resamples `rect` of `source` to exactly targetWidth×targetHeight. While the current size
+ * is at least 2× the target it halves with high-quality smoothing first, which avoids the
+ * aliasing a single large downscale produces.
+ */
+const resample = async (
+  env: CanvasEnv,
+  source: DrawSource,
+  rect: CropRect,
+  targetWidth: number,
+  targetHeight: number,
+  checkpoint: Checkpoint,
+): Promise<Surface> => {
+  let current: DrawSource = source;
+  let region = { ...rect };
+
+  while (region.width / 2 >= targetWidth && region.height / 2 >= targetHeight) {
+    const width = Math.round(region.width / 2);
+    const height = Math.round(region.height / 2);
+    const step = env.create(width, height);
+    const context = get2d(step);
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(current, region.x, region.y, region.width, region.height, 0, 0, width, height);
+    if (current !== source) releaseCanvas(current as Surface);
+    current = step;
+    region = { x: 0, y: 0, width, height };
+    await checkpoint();
+  }
+
+  const result = env.create(targetWidth, targetHeight);
+  const context = get2d(result);
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(current, region.x, region.y, region.width, region.height, 0, 0, targetWidth, targetHeight);
+  if (current !== source) releaseCanvas(current as Surface);
+  return result;
+};
+
+type Encoded = { blob: Blob; encoder: 'wasm' | 'native' };
+
+const nativeEncode = async (env: CanvasEnv, canvas: Surface, format: OutputFormat, quality: number): Promise<Blob> => {
+  const mime = FORMAT_MIME[format];
+  const blob = await env.toBlob(canvas, mime, quality / 100);
+  // Browsers silently fall back to PNG for types they can't encode (e.g. AVIF).
+  if (blob.type !== mime) throw new Error(`This browser can't encode ${FORMAT_LABELS[format]} and the ${FORMAT_LABELS[format]} encoder failed to load.`);
+  return blob;
+};
+
+const encodePng = async (env: CanvasEnv, canvas: Surface): Promise<Encoded> => {
+  const png = await env.toBlob(canvas, 'image/png');
+  try {
+    const optimised = await optimisePng(await png.arrayBuffer());
+    return { blob: new Blob([optimised], { type: 'image/png' }), encoder: 'wasm' };
+  } catch {
+    return { blob: png, encoder: 'native' };
+  }
+};
+
+/** Encodes at one quality, falling back to the browser encoder if the wasm codec fails to load. */
+const createLossyEncoder = (env: CanvasEnv, canvas: Surface, format: Exclude<OutputFormat, 'png'>) => {
+  let pixels: ImageData | null = null;
+  let useNative = false;
+  return async (quality: number): Promise<Encoded> => {
+    if (!useNative) {
+      try {
+        pixels ??= get2d(canvas).getImageData(0, 0, canvas.width, canvas.height);
+        const buffer = await encodeRaw(format, pixels, quality);
+        return { blob: new Blob([buffer], { type: FORMAT_MIME[format] }), encoder: 'wasm' };
+      } catch (error) {
+        console.warn(`${FORMAT_LABELS[format]} wasm encoder failed; using the browser encoder.`, error);
+        useNative = true;
+      }
+    }
+    return { blob: await nativeEncode(env, canvas, format, quality), encoder: 'native' };
+  };
+};
+
+export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: Checkpoint): Promise<EncodeResult> => {
+  const { settings } = job;
+  const transformed = applyTransform(env, job);
+  const geometry = resolveOutputGeometry(transformed, job.crop, settings);
+  await checkpoint();
+
+  const resized = await resample(env, transformed, geometry.sourceRect, geometry.drawRect.width, geometry.drawRect.height, checkpoint);
+  if (transformed !== job.bitmap) releaseCanvas(transformed as Surface);
+
+  const output = env.create(geometry.outWidth, geometry.outHeight);
+  const context = get2d(output, { willReadFrequently: true });
+  const padded =
+    geometry.drawRect.width !== geometry.outWidth || geometry.drawRect.height !== geometry.outHeight;
+
+  if (settings.format === 'jpeg' || padded) {
+    // Padding for contain mode; for JPEG this also composites any transparency over the matte.
+    const needsMatte = padded || hasTransparency(get2d(resized).getImageData(0, 0, resized.width, resized.height).data);
+    if (needsMatte) {
+      context.fillStyle = settings.matteColor;
+      context.fillRect(0, 0, geometry.outWidth, geometry.outHeight);
+    }
+  }
+  context.drawImage(resized, geometry.drawRect.x, geometry.drawRect.y);
+  releaseCanvas(resized);
+
+  const downscaled = geometry.sourceRect.width > geometry.drawRect.width;
+  if (settings.sharpen > 0 && downscaled) {
+    const pixels = context.getImageData(0, 0, geometry.outWidth, geometry.outHeight);
+    unsharpMask(pixels.data, pixels.width, pixels.height, settings.sharpen);
+    context.putImageData(pixels, 0, 0);
+  }
+
+  const reference = job.wantReference ? await createImageBitmap(output) : null;
+  await checkpoint();
+
+  let encoded: Encoded;
+  let quality = settings.quality;
+  let warning: string | null = null;
+
+  if (settings.format === 'png') {
+    encoded = await encodePng(env, output);
+    quality = 100;
+  } else {
+    const encodeAt = createLossyEncoder(env, output, settings.format);
+    if (settings.targetMaxBytes) {
+      const attempts = new Map<number, Encoded>();
+      const search = await findQualityForTarget(async (candidate) => {
+        await checkpoint();
+        const attempt = await encodeAt(candidate);
+        attempts.set(candidate, attempt);
+        return attempt.blob.size;
+      }, settings.targetMaxBytes);
+      quality = search.quality;
+      encoded = attempts.get(search.quality) as Encoded;
+      if (!search.reachable) {
+        warning = `Can't reach ${formatBytes(settings.targetMaxBytes)} at this size — reduce dimensions or change format.`;
+      }
+    } else {
+      encoded = await encodeAt(settings.quality);
+    }
+  }
+
+  releaseCanvas(output);
+
+  return {
+    blob: encoded.blob,
+    width: geometry.outWidth,
+    height: geometry.outHeight,
+    quality,
+    encoder: encoded.encoder,
+    warning,
+    upscaleCapped: geometry.upscaleCapped,
+    reference,
+  };
+};

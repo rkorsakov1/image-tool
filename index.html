@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      Content Security Policy (GitHub Pages can't send headers, so it lives here).
+      - script-src 'wasm-unsafe-eval': required to compile the WASM codecs and ONNX Runtime.
+      - worker-src blob:: ONNX Runtime may spawn its proxy worker from a blob URL.
+      - img-src blob: data:: previews and outputs are object URLs.
+      - style-src 'unsafe-inline': React sets numeric geometry (crop box position) via style attributes.
+      - connect-src https:: only for the user-initiated "fetch image from URL".
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' https:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="Crop, resize, compress and retouch images entirely in your browser. Nothing is uploaded." />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <title>LocalCrop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

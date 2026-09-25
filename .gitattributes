@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+# Vendored assets must stay byte-identical to upstream (SHA-256 in VENDOR.md).
+src/vendor/** -text
+public/vendor/** -text
+public/models/** -text
+*.wasm binary
+*.onnx binary

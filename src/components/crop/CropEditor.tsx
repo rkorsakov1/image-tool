@@ -1,0 +1,80 @@
+import { useMemo, useRef } from 'react';
+import { computeAutoCrop, resolveOutputGeometry, targetAspect, transformedSize } from '../../lib/cropMath';
+import type { Preset, QueueItem } from '../../lib/types';
+import { useViewTransform } from '../../hooks/useViewTransform';
+import { useApp } from '../../state/AppContext';
+import { CropBox } from './CropBox';
+import { ImageCanvas } from './ImageCanvas';
+
+type CropEditorProps = { item: QueueItem; preset: Preset };
+
+export const CropEditor = ({ item, preset }: CropEditorProps) => {
+  const { state, dispatch } = useApp();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const bitmap = item.editedBitmap ?? item.sourceBitmap;
+  const image = useMemo(() => transformedSize(bitmap, item.transform.rotation), [bitmap, item.transform.rotation]);
+  const contain = preset.fit === 'contain' && preset.width !== null && preset.height !== null;
+  const geometry = useMemo(() => resolveOutputGeometry(image, item.crop, preset), [image, item.crop, preset]);
+
+  // In contain mode the view shows the output frame; otherwise the whole image.
+  const frame = useMemo(
+    () => (contain ? { width: geometry.outWidth, height: geometry.outHeight } : image),
+    [contain, geometry.outWidth, geometry.outHeight, image],
+  );
+  const { view } = useViewTransform(containerRef, { image: frame });
+  const aspect = targetAspect(preset);
+  const crop = item.crop ?? computeAutoCrop(image, aspect);
+
+  return (
+    <div ref={containerRef} className="relative h-full min-h-72 w-full touch-none overflow-hidden select-none">
+      {view && !contain ? (
+        <>
+          <ImageCanvas bitmap={bitmap} transform={item.transform} view={view} />
+          <CropBox
+            crop={crop}
+            bounds={image}
+            aspect={aspect}
+            view={view}
+            containerRef={containerRef}
+            showThirds={state.prefs.showThirds}
+            onChange={(next) => dispatch({ type: 'setCrop', id: item.id, crop: next })}
+            onReset={() => dispatch({ type: 'setCrop', id: item.id, crop: null })}
+          />
+        </>
+      ) : null}
+
+      {view && contain ? (
+        <>
+          {/* The matte is a user-chosen runtime color, so it can't be a Tailwind class. */}
+          <div
+            aria-hidden="true"
+            className="absolute shadow-lg ring-1 ring-slate-400/40"
+            style={{
+              left: view.offsetX,
+              top: view.offsetY,
+              width: view.displayWidth,
+              height: view.displayHeight,
+              backgroundColor: preset.matteColor,
+            }}
+          />
+          <ImageCanvas
+            bitmap={bitmap}
+            transform={item.transform}
+            view={{
+              ...view,
+              offsetX: view.offsetX + geometry.drawRect.x * view.scale,
+              offsetY: view.offsetY + geometry.drawRect.y * view.scale,
+              scale: view.scale * (geometry.drawRect.width / image.width),
+              deviceScale: view.deviceScale * (geometry.drawRect.width / image.width),
+              displayWidth: geometry.drawRect.width * view.scale,
+              displayHeight: geometry.drawRect.height * view.scale,
+            }}
+          />
+          <p className="sr-only" aria-live="polite">
+            Contain mode: the whole image is fitted inside the {geometry.outWidth} by {geometry.outHeight} output and padded with the matte color.
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+};
