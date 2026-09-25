@@ -6,7 +6,12 @@ export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
 
 export type Prefs = { showThirds: boolean };
 
-export type Notice = { id: string; tone: 'info' | 'warning' | 'error'; message: string };
+export type Notice = {
+  id: string;
+  tone: 'info' | 'warning' | 'error';
+  message: string;
+  action?: { label: string; run: () => void };
+};
 
 export type AppState = {
   /** User presets, in display order. Built-ins live in BUILTIN_PRESETS. */

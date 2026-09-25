@@ -14,7 +14,7 @@ type AppContextValue = {
   selectedItem: QueueItem | null;
   addFiles: (files: readonly (File | { blob: Blob; name: string })[]) => Promise<void>;
   removeItem: (id: string) => void;
-  notify: (tone: Notice['tone'], message: string) => void;
+  notify: (tone: Notice['tone'], message: string, action?: Notice['action']) => void;
   /** Filename from the preset's template; pass `output` when it isn't stored on the item yet. */
   outputFilename: (item: QueueItem, output?: EncodedOutput | null) => string;
   downloadItem: (item: QueueItem) => void;
@@ -63,8 +63,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Release everything still held when the app unmounts.
   useEffect(() => () => stateRef.current.items.forEach(releaseItem), []);
 
-  const notify = useCallback((tone: Notice['tone'], message: string) => {
-    dispatch({ type: 'notify', notice: { id: crypto.randomUUID(), tone, message } });
+  const notify = useCallback((tone: Notice['tone'], message: string, action?: Notice['action']) => {
+    dispatch({ type: 'notify', notice: { id: crypto.randomUUID(), tone, message, action } });
   }, []);
 
   const addFiles = useCallback<AppContextValue['addFiles']>(

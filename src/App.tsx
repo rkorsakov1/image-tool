@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CanvasArea, MODES } from './components/layout/CanvasArea';
 import { Footer } from './components/layout/Footer';
 import { Notices } from './components/layout/Notices';
@@ -7,17 +7,24 @@ import { SettingsPanel } from './components/layout/SettingsPanel';
 import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
 import { WindowDropTarget } from './components/input/DropZone';
 import { PasteListener } from './components/input/PasteListener';
+import { SharedPresetDialog } from './components/presets/SharedPresetDialog';
 import { Button } from './components/ui/Button';
 import { useDebouncedEncode } from './hooks/useDebouncedEncode';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { cn } from './lib/cn';
+import { consumeLaunchedFiles, registerServiceWorker } from './pwa/registerServiceWorker';
 import { AppProvider, useApp } from './state/AppContext';
 
 const Shell = () => {
-  const { state, dispatch, selectedItem, downloadItem } = useApp();
+  const { state, dispatch, selectedItem, downloadItem, addFiles, notify } = useApp();
   const reference = useDebouncedEncode();
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    registerServiceWorker((activate) => notify('info', 'A new version of LocalCrop is available.', { label: 'Reload', run: activate }));
+    consumeLaunchedFiles((files) => void addFiles(files));
+  }, [addFiles, notify]);
 
   useKeyboardShortcuts({
     download: () => {
@@ -76,6 +83,7 @@ const Shell = () => {
 
       <Footer onShowShortcuts={() => setHelpOpen(true)} />
       <ShortcutsDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <SharedPresetDialog />
       <Notices />
       <WindowDropTarget />
       <PasteListener />

@@ -10,6 +10,7 @@ import type {
   ZipJob,
   ZipResult,
 } from './protocol';
+import { supportsOffscreen2d } from './capabilities';
 import { createCancelledError } from './protocol';
 
 export type EncodeHandle = { requestId: number; promise: Promise<EncodeResult> };
@@ -27,13 +28,6 @@ export type Processor = {
 type AnyResult = EncodeResult | FillResult | ComposeResult | ZipResult;
 type Pending = { resolve: (result: AnyResult) => void; reject: (error: Error) => void };
 
-const supportsOffscreen2d = (): boolean => {
-  try {
-    return typeof OffscreenCanvas !== 'undefined' && new OffscreenCanvas(1, 1).getContext('2d') !== null;
-  } catch {
-    return false;
-  }
-};
 
 const createWorkerProcessor = (): Processor => {
   const worker = new Worker(new URL('./processor.worker.ts', import.meta.url), { type: 'module', name: 'processor' });

@@ -199,8 +199,9 @@ export const resolveOutputGeometry = (
   const scale = Math.min(requestedWidth / sourceRect.width, requestedHeight / sourceRect.height);
   const capped = !allowUpscale && scale > 1;
   const factor = capped ? 1 / scale : 1;
-  const outWidth = atLeastOne(requestedWidth * factor);
-  const outHeight = atLeastOne(requestedHeight * factor);
+  // When capped, rounding must never push the output past the crop itself (that would upscale).
+  const outWidth = capped ? Math.min(sourceRect.width, atLeastOne(requestedWidth * factor)) : atLeastOne(requestedWidth);
+  const outHeight = capped ? Math.min(sourceRect.height, atLeastOne(requestedHeight * factor)) : atLeastOne(requestedHeight);
 
   return {
     outWidth,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_FILENAME_TEMPLATE } from '../../lib/filenameTemplate';
 import { BUILTIN_PRESETS, uniquePresetName } from '../../lib/presets';
+import { createShareHash } from '../../lib/presetShare';
 import { createPresetFile, describeMergeSummary, mergePresets, validatePresetFile } from '../../lib/presetValidation';
 import { FORMAT_LABELS } from '../../lib/format';
 import type { Preset } from '../../lib/types';
@@ -10,7 +11,7 @@ import { Dialog } from '../ui/Dialog';
 import { inputClass } from '../ui/Field';
 import { Icon } from '../ui/Icon';
 
-const describePreset = (preset: Preset): string => {
+export const describePreset = (preset: Preset): string => {
   const size = preset.width || preset.height ? `${preset.width ?? 'auto'}×${preset.height ?? 'auto'}` : 'original size';
   const quality = preset.format === 'png' ? '' : ` q${preset.quality}`;
   const target = preset.targetMaxBytes ? ` ≤${Math.round(preset.targetMaxBytes / 1000)} KB` : '';
@@ -45,9 +46,10 @@ type RowProps = {
   onDuplicate: () => void;
   onDelete: () => void;
   onMove: (offset: 1 | -1) => void;
+  onShare?: () => void;
 };
 
-const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, onRename, onDuplicate, onDelete, onMove }: RowProps) => {
+const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, onRename, onDuplicate, onDelete, onMove, onShare }: RowProps) => {
   const [name, setName] = useState(preset.name);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEffect(() => setName(preset.name), [preset.name]);
@@ -104,6 +106,11 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
             </Button>
           </>
         )}
+        {onShare ? (
+          <Button size="sm" variant="ghost" onClick={onShare} aria-label={`Copy a share link for ${preset.name}`} title="Copy a link that imports this preset">
+            <Icon name="link" /> Link
+          </Button>
+        ) : null}
         <Button size="sm" onClick={onDuplicate} aria-label={`Duplicate ${preset.name}`}>
           Duplicate
         </Button>
@@ -139,6 +146,16 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
     const copy: Preset = { ...preset, id: crypto.randomUUID(), name: uniquePresetName(`${preset.name} copy`, allNames) };
     dispatch({ type: 'upsertPreset', preset: copy });
     dispatch({ type: 'announce', message: `Created ${copy.name}.` });
+  };
+
+  const handleShare = async (preset: Preset) => {
+    const url = `${window.location.origin}${window.location.pathname}${createShareHash([preset])}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify('info', `Share link for ${preset.name} copied. Opening it offers to import the preset.`);
+    } catch {
+      window.prompt('Copy this link:', url);
+    }
   };
 
   const handleExport = () => {
@@ -261,6 +278,7 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
                 dispatch({ type: 'announce', message: `Deleted ${preset.name}.` });
               }}
               onMove={(offset) => dispatch({ type: 'movePreset', id: preset.id, offset })}
+              onShare={() => void handleShare(preset)}
             />
           ))}
         </ul>

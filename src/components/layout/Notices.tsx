@@ -12,7 +12,7 @@ export const Notices = () => {
 
   useEffect(() => {
     const timers = state.notices
-      .filter((notice) => notice.tone !== 'error')
+      .filter((notice) => notice.tone !== 'error' && !notice.action)
       .map((notice) => setTimeout(() => dispatch({ type: 'dismissNotice', id: notice.id }), AUTO_DISMISS_MS));
     return () => timers.forEach(clearTimeout);
   }, [state.notices, dispatch]);
@@ -33,6 +33,11 @@ export const Notices = () => {
             })}
           >
             <p className="flex-1">{notice.message}</p>
+            {notice.action ? (
+              <Button size="sm" variant="primary" onClick={notice.action.run}>
+                {notice.action.label}
+              </Button>
+            ) : null}
             <Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => dispatch({ type: 'dismissNotice', id: notice.id })}>
               <Icon name="close" />
             </Button>

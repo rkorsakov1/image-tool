@@ -1,0 +1,30 @@
+{
+  "name": "LocalCrop",
+  "short_name": "LocalCrop",
+  "description": "Crop, resize, compress and retouch images entirely in your browser. Nothing is uploaded.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0284c7",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "image/jpeg": [".jpg", ".jpeg", ".jfif"],
+        "image/png": [".png"],
+        "image/webp": [".webp"],
+        "image/avif": [".avif"],
+        "image/gif": [".gif"],
+        "image/bmp": [".bmp"]
+      },
+      "launch_type": "single-client"
+    }
+  ]
+}

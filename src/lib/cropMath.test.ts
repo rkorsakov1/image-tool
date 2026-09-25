@@ -134,6 +134,14 @@ describe('resolveOutputGeometry', () => {
     expect(geometry.upscaleCapped).toBe(true);
   });
 
+  it('never exceeds a rounded crop when capping', () => {
+    // 451 px wide at 16:9 is 253.7 px tall; rounding must not produce a 452 px output.
+    const geometry = resolveOutputGeometry({ width: 451, height: 300 }, null, cover(1280, 720));
+    expect(geometry.outWidth).toBeLessThanOrEqual(geometry.sourceRect.width);
+    expect(geometry.outHeight).toBeLessThanOrEqual(geometry.sourceRect.height);
+    expect(geometry.upscaleCapped).toBe(true);
+  });
+
   it('upscales when allowed', () => {
     const geometry = resolveOutputGeometry({ width: 800, height: 600 }, null, cover(1600, null, true));
     expect([geometry.outWidth, geometry.outHeight]).toEqual([1600, 1200]);
