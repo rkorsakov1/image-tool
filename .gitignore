@@ -2,3 +2,5 @@ node_modules
 dist
 *.local
 .DS_Store
+# local design notes, feedback and screenshots (not part of the app)
+Edits-comments/
