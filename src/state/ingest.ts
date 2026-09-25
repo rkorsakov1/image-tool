@@ -1,5 +1,9 @@
 // Getting images into the app: decoding, folder traversal, URL fetch.
 
+import { decodeRaw, sniffFormat, svgIntrinsicSize, svgRasterSize, type SniffedKind } from '../lib/decoders';
+import type { RawImage } from '../lib/decoders/types';
+import { decodeHeif } from '../worker/heifClient';
+
 const IMAGE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'jfif', 'pjpeg', 'pjp', 'png', 'apng', 'webp', 'avif', 'gif', 'bmp', 'dib', 'ico', 'cur', 'svg',
   'tif', 'tiff', 'tga', 'pbm', 'pgm', 'ppm', 'pnm', 'pam', 'qoi', 'heic', 'heif', 'jxl',
@@ -25,23 +29,75 @@ const extensionOf = (name: string): string => {
 export const looksLikeImageFile = (file: File): boolean =>
   file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(extensionOf(file.name));
 
-const unsupportedMessage = (name: string, type: string): string => {
+const unsupportedMessage = (name: string, kind: SniffedKind): string => {
+  if (kind === 'jxl') return 'JPEG XL can only be opened in Safari. Convert it to JPEG or PNG first, or use Safari.';
   const extension = extensionOf(name);
-  if (type.includes('heic') || type.includes('heif') || extension === 'heic' || extension === 'heif') {
-    return 'HEIC images can only be opened in Safari. Convert to JPEG first, or use Safari.';
+  if (['psd', 'raw', 'cr2', 'cr3', 'nef', 'arw', 'dng', 'orf', 'rw2', 'pdf', 'eps', 'ai'].includes(extension)) {
+    return `${extension.toUpperCase()} files aren’t supported. Export a JPEG, PNG or TIFF first.`;
   }
-  return 'Unsupported format. Supported: JPEG, PNG, WebP, AVIF, GIF (first frame), BMP.';
+  return `Unsupported format. Supported: ${SUPPORTED_FORMAT_LABELS.join(', ')}.`;
 };
 
-/** Decodes with EXIF orientation applied. GIFs decode their first frame. */
-export const decodeImage = async (blob: Blob, name: string): Promise<Decoded> => {
-  if (blob.type && !blob.type.startsWith('image/')) throw new Error(unsupportedMessage(name, blob.type));
+const fromRaw = (raw: RawImage): Promise<ImageBitmap> =>
+  createImageBitmap(new ImageData(raw.data as Uint8ClampedArray<ArrayBuffer>, raw.width, raw.height));
+
+/** Draws the SVG at a generous size: vectors have no fixed resolution, and the upscale guard would otherwise cap the output. */
+const rasterizeSvg = async (blob: Blob): Promise<ImageBitmap> => {
+  const text = await blob.text();
+  const intrinsic = svgIntrinsicSize(text) ?? { width: 1024, height: 1024 };
+  const size = svgRasterSize(intrinsic);
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' }));
   try {
-    const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-    return { bitmap, name, bytes: blob.size, type: blob.type };
-  } catch {
-    throw new Error(unsupportedMessage(name, blob.type));
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas 2D is not available.');
+    context.drawImage(image, 0, 0, size.width, size.height);
+    return await createImageBitmap(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
   }
+};
+
+/**
+ * Decodes with EXIF orientation applied. The browser handles what it can (GIFs give their first
+ * frame); SVG, TIFF, TGA, PNM, QOI and HEIC (outside Safari) go through our own decoders.
+ */
+export const decodeImage = async (blob: Blob, name: string): Promise<Decoded> => {
+  const head = new Uint8Array(await blob.slice(0, 256).arrayBuffer());
+  const kind = sniffFormat(head, name, blob.type);
+  const done = (bitmap: ImageBitmap): Decoded => ({ bitmap, name, bytes: blob.size, type: blob.type });
+
+  if (kind === 'svg') {
+    try {
+      return done(await rasterizeSvg(blob));
+    } catch {
+      throw new Error('This SVG couldn’t be drawn. It may reference external files or be malformed.');
+    }
+  }
+
+  try {
+    return done(await createImageBitmap(blob, { imageOrientation: 'from-image' }));
+  } catch {
+    // Not decodable natively; try our own decoders below.
+  }
+
+  if (kind === 'heif') {
+    try {
+      return done(await fromRaw(await decodeHeif(await blob.arrayBuffer())));
+    } catch (error) {
+      throw new Error(`Couldn’t decode this HEIC image: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const raw = await decodeRaw(kind, await blob.arrayBuffer()).catch((error: unknown) => {
+    throw new Error(error instanceof Error ? error.message : String(error));
+  });
+  if (raw) return done(await fromRaw(raw));
+  throw new Error(unsupportedMessage(name, kind));
 };
 
 const readEntries = (reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> =>
@@ -122,6 +178,6 @@ export const fetchImageFromUrl = async (input: string): Promise<{ blob: Blob; na
   }
   if (!response.ok) throw new Error(`The server answered ${response.status} ${response.statusText}.`.trim());
   const blob = await response.blob();
-  if (blob.type && !blob.type.startsWith('image/')) throw new Error(`That URL returned ${blob.type}, not an image.`);
+  if (blob.type.startsWith('text/html')) throw new Error('That URL returned a web page, not an image. Open the image itself and copy its address.');
   return { blob, name: nameFromUrl(url, blob.type) };
 };

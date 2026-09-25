@@ -110,6 +110,16 @@ const packages = [
     // The npm package ships no LICENSE file; take it from the tagged source.
     extraDownloads: [{ url: 'https://raw.githubusercontent.com/microsoft/onnxruntime/v1.30.0/LICENSE', to: 'LICENSE' }],
   },
+  {
+    name: 'libheif-js',
+    version: '1.23.2',
+    license: 'LGPL-3.0 (libheif and its libde265 decoder)',
+    url: 'https://github.com/catdad-experiments/libheif-js',
+    // Served as a separate, unmodified file (LGPL: users can swap in their own build) and only
+    // loaded when a HEIC/HEIF image arrives in a browser that can't decode it natively.
+    dest: 'public/vendor/libheif@1.23.2',
+    files: [{ from: 'libheif-wasm/libheif-bundle.mjs' }, { from: 'LICENSE' }, { from: 'libheif-wasm/LICENSE', to: 'LICENSE.libheif' }],
+  },
 ];
 
 /**

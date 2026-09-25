@@ -22,7 +22,15 @@
         "image/webp": [".webp"],
         "image/avif": [".avif"],
         "image/gif": [".gif"],
-        "image/bmp": [".bmp"]
+        "image/bmp": [".bmp"],
+        "image/heic": [".heic"],
+        "image/heif": [".heif"],
+        "image/tiff": [".tif", ".tiff"],
+        "image/svg+xml": [".svg"],
+        "image/x-icon": [".ico"],
+        "image/x-tga": [".tga"],
+        "image/x-portable-anymap": [".pnm", ".pbm", ".pgm", ".ppm"],
+        "image/qoi": [".qoi"]
       },
       "launch_type": "single-client"
     }

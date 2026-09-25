@@ -16,10 +16,12 @@ const builtin = (id: string, fields: Omit<Preset, 'id' | 'matteColor' | 'allowUp
 export const BUILTIN_PRESETS: readonly Preset[] = [
   builtin('youtube', { name: 'YouTube thumbnail', width: 1280, height: 720, fit: 'cover', format: 'jpeg', quality: 80 }),
   builtin('og', { name: 'Open Graph', width: 1200, height: 630, fit: 'cover', format: 'jpeg', quality: 82 }),
-  builtin('square1080', { name: 'Square 1080', width: 1080, height: 1080, fit: 'cover', format: 'webp', quality: 80 }),
-  builtin('original-webp', { name: 'Original size WebP', width: null, height: null, fit: 'cover', format: 'webp', quality: 80 }),
-  builtin('w1600', { name: 'Width 1600 (keep aspect)', width: 1600, height: null, fit: 'cover', format: 'webp', quality: 80 }),
-];
+  builtin('16x9', { name: '16:9 Full HD', width: 1920, height: 1080, fit: 'cover', format: 'jpeg', quality: 82 }),
+  builtin('1x1', { name: '1:1 Square', width: 1080, height: 1080, fit: 'cover', format: 'jpeg', quality: 82 }),
+  builtin('4x5', { name: '4:5 Portrait post', width: 1080, height: 1350, fit: 'cover', format: 'jpeg', quality: 82 }),
+  builtin('9x16', { name: '9:16 Story / Reel', width: 1080, height: 1920, fit: 'cover', format: 'jpeg', quality: 82 }),
+  builtin('original', { name: 'Original size (convert only)', width: null, height: null, fit: 'cover', format: 'webp', quality: 85 }),
+]
 
 export const isBuiltinPreset = (id: string): boolean => id.startsWith(BUILTIN_PREFIX);
 

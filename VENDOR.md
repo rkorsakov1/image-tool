@@ -93,6 +93,20 @@ using the same default options as the upstream wrappers.
 | `ort-wasm-simd-threaded.asyncify.wasm` | 26781914 | `39f9f0894d478800487ed9f7dbe92618498db320cf55c8e3d89adff8dce658da` |
 | `ort.webgpu.min.mjs` | 66349 | `3dffff71811bc13a3a3d9591c57ca5ee5735b8f5f3eaf789510b02bb040ae3a0` |
 
+### libheif-js@1.23.2
+
+- **Source package:** `libheif-js` (npm)
+- **Exact version:** 1.23.2
+- **License:** LGPL-3.0 (libheif and its libde265 decoder)
+- **Source URL:** https://github.com/catdad-experiments/libheif-js
+- **Location:** `public/vendor/libheif@1.23.2/`
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `libheif-bundle.mjs` | 1989119 | `d05292271af008d300cc75be374feb8fd35b418a71420a556c3fb817f662b502` |
+| `LICENSE` | 7652 | `e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118` |
+| `LICENSE.libheif` | 44366 | `fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596` |
+
 ### Background-removal model: ISNet general-use (DIS), 8-bit weights
 
 - **Model:** ISNet, "general use" weights from *Highly Accurate Dichotomous Image Segmentation* (DIS), Qin et al., ECCV 2022
