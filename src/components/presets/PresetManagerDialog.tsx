@@ -6,7 +6,8 @@ import { createPresetFile, describeMergeSummary, mergePresets, validatePresetFil
 import { FORMAT_LABELS } from '../../lib/format';
 import type { Preset } from '../../lib/types';
 import { triggerDownload, useApp } from '../../state/AppContext';
-import { Button } from '../ui/Button';
+import { cn } from '../../lib/cn';
+import { Button, sectionLabelClass } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { inputClass } from '../ui/Field';
 import { Icon } from '../ui/Icon';
@@ -63,72 +64,71 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
     if (trimmed !== preset.name) onRename(trimmed);
   };
 
-  return (
-    <li className="flex flex-wrap items-center gap-2 py-2">
-      {builtin ? (
-        <span className="w-4" aria-hidden="true" />
-      ) : (
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelected}
-          aria-label={`Select ${preset.name} for export`}
-          className="size-4 accent-sky-600"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        {builtin ? (
-          <p className="truncate text-sm font-medium">
-            {preset.name} <span className="text-xs font-normal text-slate-500">(built-in)</span>
-          </p>
-        ) : (
-          <input
-            value={name}
-            aria-label={`Name of preset ${preset.name}`}
-            onChange={(event) => setName(event.target.value)}
-            onBlur={commitName}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') commitName();
-            }}
-            className={inputClass}
-          />
-        )}
-        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{describePreset(preset)}</p>
-      </div>
-      <div className="flex items-center gap-1">
-        {builtin ? null : (
-          <>
-            <Button size="sm" variant="ghost" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${preset.name} up`}>
-              <Icon name="up" />
-            </Button>
-            <Button size="sm" variant="ghost" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${preset.name} down`}>
-              <Icon name="down" />
-            </Button>
-          </>
-        )}
-        {onShare ? (
-          <Button size="sm" variant="ghost" onClick={onShare} aria-label={`Copy a share link for ${preset.name}`} title="Copy a link that imports this preset">
-            <Icon name="link" /> Link
-          </Button>
-        ) : null}
+  if (builtin) {
+    return (
+      <li className="flex min-h-11 items-center gap-3 py-1.5">
+        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{preset.name}</p>
+        <p className="hidden truncate font-mono text-[11px] text-ink-3 sm:block">{describePreset(preset)}</p>
         <Button size="sm" onClick={onDuplicate} aria-label={`Duplicate ${preset.name}`}>
           Duplicate
         </Button>
-        {builtin ? null : confirmingDelete ? (
-          <>
-            <Button size="sm" variant="danger" onClick={onDelete}>
-              Delete
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-2.5 py-2">
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggleSelected}
+        aria-label={`Select ${preset.name} for export`}
+        className="size-4 shrink-0 accent-primary"
+      />
+      <div className="min-w-0 flex-1">
+        <input
+          value={name}
+          aria-label={`Name of preset ${preset.name}`}
+          onChange={(event) => setName(event.target.value)}
+          onBlur={commitName}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitName();
+          }}
+          className={cn(inputClass, 'h-7 border-transparent bg-transparent px-1.5 font-medium hover:border-line-strong focus:border-line-strong focus:bg-raised')}
+        />
+        <p className="mt-0.5 truncate pl-1.5 font-mono text-[11px] text-ink-3">{describePreset(preset)}</p>
+      </div>
+      {confirmingDelete ? (
+        <div role="group" aria-label={`Confirm deleting ${preset.name}`} className="flex items-center gap-1 rounded-md bg-danger-bg py-1 pr-1 pl-2.5 text-xs text-danger">
+          <span className="mr-1">Delete “{preset.name}”?</span>
+          <Button size="xs" variant="ghost" onClick={() => setConfirmingDelete(false)}>
+            Cancel
+          </Button>
+          <Button size="xs" variant="danger" autoFocus onClick={onDelete}>
+            Delete
+          </Button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-0.5">
+          <Button size="icon-sm" variant="ghost" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${preset.name} up`}>
+            <Icon name="up" />
+          </Button>
+          <Button size="icon-sm" variant="ghost" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${preset.name} down`}>
+            <Icon name="down" />
+          </Button>
+          {onShare ? (
+            <Button size="icon-sm" variant="ghost" onClick={onShare} aria-label={`Copy a share link for ${preset.name}`} title="Copy a link that imports this preset">
+              <Icon name="link" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(false)}>
-              Keep
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => setConfirmingDelete(true)} aria-label={`Delete ${preset.name}`}>
+          ) : null}
+          <Button size="icon-sm" variant="ghost" onClick={onDuplicate} aria-label={`Duplicate ${preset.name}`} title="Duplicate">
+            <Icon name="duplicate" />
+          </Button>
+          <Button size="icon-sm" variant="ghost" onClick={() => setConfirmingDelete(true)} aria-label={`Delete ${preset.name}`} title="Delete">
             <Icon name="trash" />
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </li>
   );
 };
@@ -210,7 +210,9 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
       title="Manage presets"
       footer={
         <>
-          <Button onClick={() => fileInput.current?.click()}>Import…</Button>
+          <Button onClick={() => fileInput.current?.click()} className="mr-auto">
+            Import…
+          </Button>
           <Button onClick={handleExport}>{selected.size > 0 ? `Export ${selected.size} selected` : 'Export all'}</Button>
           <Button
             variant="primary"
@@ -237,7 +239,7 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
       }
     >
       {pendingImport ? (
-        <div role="alert" className="mb-4 rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm dark:border-sky-700 dark:bg-sky-950">
+        <div role="alert" className="mb-4 rounded-md bg-success-bg p-3 text-[13px] text-success">
           <p className="font-medium">Import: {pendingImport.summary}.</p>
           <div className="mt-2 flex gap-2">
             <Button size="sm" variant="primary" onClick={handleConfirmImport}>
@@ -250,13 +252,15 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
         </div>
       ) : null}
 
-      <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Your presets</h3>
+      <h3 className={sectionLabelClass}>
+        Yours · <span className="font-mono">{state.presets.length}</span>
+      </h3>
       {state.presets.length === 0 ? (
-        <p className="py-3 text-sm text-slate-500 dark:text-slate-400">
+        <p className="py-3 text-[13px] text-ink-3">
           None yet. Duplicate a built-in, use “Save as new preset” in the settings panel, or import a file.
         </p>
       ) : (
-        <ul className="divide-y divide-slate-200 dark:divide-slate-700">
+        <ul className="divide-y divide-line">
           {state.presets.map((preset, index) => (
             <PresetRow
               key={preset.id}
@@ -284,8 +288,8 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
         </ul>
       )}
 
-      <h3 className="mt-5 text-xs font-semibold tracking-wide text-slate-500 uppercase">Built-in (read-only)</h3>
-      <ul className="divide-y divide-slate-200 dark:divide-slate-700">
+      <h3 className={cn(sectionLabelClass, 'mt-5')}>Built-in · read-only</h3>
+      <ul className="divide-y divide-line">
         {BUILTIN_PRESETS.map((preset) => (
           <PresetRow
             key={preset.id}

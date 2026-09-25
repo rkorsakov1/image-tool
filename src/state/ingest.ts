@@ -1,6 +1,15 @@
 // Getting images into the app: decoding, folder traversal, URL fetch.
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'jfif', 'png', 'webp', 'avif', 'gif', 'bmp', 'heic', 'heif']);
+const IMAGE_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'jfif', 'pjpeg', 'pjp', 'png', 'apng', 'webp', 'avif', 'gif', 'bmp', 'dib', 'ico', 'cur', 'svg',
+  'tif', 'tiff', 'tga', 'pbm', 'pgm', 'ppm', 'pnm', 'pam', 'qoi', 'heic', 'heif', 'jxl',
+]);
+
+/** For <input type=file accept>: image/* alone hides .tga, .qoi, .pnm and (on some systems) .heic. */
+export const FILE_INPUT_ACCEPT = ['image/*', ...[...IMAGE_EXTENSIONS].map((extension) => `.${extension}`)].join(',');
+
+/** Shown in the empty state. */
+export const SUPPORTED_FORMAT_LABELS = ['JPEG', 'PNG', 'WebP', 'AVIF', 'HEIC', 'GIF', 'TIFF', 'BMP', 'SVG', 'ICO', 'TGA', 'QOI', 'PNM'];
 export const LARGE_IMAGE_PIXELS = 50_000_000;
 
 export type Decoded = { bitmap: ImageBitmap; name: string; bytes: number; type: string };

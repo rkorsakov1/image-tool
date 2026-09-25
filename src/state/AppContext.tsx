@@ -1,25 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { renderFilename } from '../lib/filenameTemplate';
-import { formatBytes } from '../lib/format';
-import type { EncodedOutput, QueueItem } from '../lib/types';
+import { formatBytes, formatSavings } from '../lib/format';
+import type { Cutout, EncodedOutput, QueueItem } from '../lib/types';
 import { createWorkerClient, type Processor } from '../worker/workerClient';
 import { appReducer, createInitialState, getItemPreset, type AppAction, type AppState, type Notice } from './appReducer';
+import { snapshotBitmaps, snapshotOf, withHistory, type HistoryAction } from './history';
 import { decodeImage, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
 import { loadPersistedState, savePersistedState } from './storage';
 
 type AppContextValue = {
   state: AppState;
-  dispatch: (action: AppAction) => void;
+  dispatch: (action: AppAction | HistoryAction) => void;
   processor: Processor;
   selectedItem: QueueItem | null;
   addFiles: (files: readonly (File | { blob: Blob; name: string })[]) => Promise<void>;
   removeItem: (id: string) => void;
-  notify: (tone: Notice['tone'], message: string, action?: Notice['action']) => void;
+  notify: (tone: Notice['tone'], message: string, action?: Notice['action'], persistent?: boolean) => void;
   /** Filename from the preset's template; pass `output` when it isn't stored on the item yet. */
   outputFilename: (item: QueueItem, output?: EncodedOutput | null) => string;
   downloadItem: (item: QueueItem) => void;
-  /** Sets (or with null, reverts) an item's retouched image and frees the previous one. */
-  replaceEditedBitmap: (id: string, bitmap: ImageBitmap | null) => void;
+  /** Sets (or with null, reverts) an item's edited image and cut-out. Undoable; old bitmaps are freed once no undo step needs them. */
+  setEdit: (id: string, bitmap: ImageBitmap | null, cutout?: Cutout | null, mergeKey?: string) => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -30,10 +31,13 @@ export const useApp = (): AppContextValue => {
   return value;
 };
 
-const releaseItem = (item: QueueItem): void => {
-  if (item.output) URL.revokeObjectURL(item.output.url);
-  item.sourceBitmap.close();
-  item.editedBitmap?.close();
+const historyReducer = withHistory(appReducer);
+
+/** Every bitmap the current state or its undo/redo steps can still show. */
+const liveBitmaps = (state: AppState): Set<ImageBitmap> => {
+  const live = new Set<ImageBitmap>(snapshotBitmaps(snapshotOf(state)));
+  for (const snapshot of [...state.history.past, ...state.history.future]) for (const bitmap of snapshotBitmaps(snapshot)) live.add(bitmap);
+  return live;
 };
 
 export const triggerDownload = (blob: Blob, filename: string): void => {
@@ -50,7 +54,7 @@ export const triggerDownload = (blob: Blob, filename: string): void => {
 };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [state, dispatch] = useReducer(appReducer, undefined, () => createInitialState(loadPersistedState()));
+  const [state, dispatch] = useReducer(historyReducer, undefined, () => createInitialState(loadPersistedState()));
   const processor = useMemo(() => createWorkerClient(), []);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -60,11 +64,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!saved) console.warn('Could not save presets to localStorage.');
   }, [state.presets, state.lastPresetId, state.prefs]);
 
-  // Release everything still held when the app unmounts.
-  useEffect(() => () => stateRef.current.items.forEach(releaseItem), []);
+  // Free bitmaps no longer reachable from the state or undo history, and preview URLs of removed images.
+  const tracked = useRef(new Set<ImageBitmap>());
+  const previousItems = useRef<QueueItem[]>([]);
+  useEffect(() => {
+    const live = liveBitmaps(state);
+    const dead = [...tracked.current].filter((bitmap) => !live.has(bitmap));
+    tracked.current = live;
+    // Delay so nothing that rendered from the old state draws a closed bitmap.
+    if (dead.length > 0) setTimeout(() => dead.forEach((bitmap) => bitmap.close()), 1000);
 
-  const notify = useCallback((tone: Notice['tone'], message: string, action?: Notice['action']) => {
-    dispatch({ type: 'notify', notice: { id: crypto.randomUUID(), tone, message, action } });
+    const present = new Set(state.items.map((item) => item.id));
+    for (const item of previousItems.current) if (!present.has(item.id) && item.output) URL.revokeObjectURL(item.output.url);
+    previousItems.current = state.items;
+  }, [state]);
+
+  const notify = useCallback((tone: Notice['tone'], message: string, action?: Notice['action'], persistent = false) => {
+    dispatch({ type: 'notify', notice: { id: crypto.randomUUID(), tone, message, action, persistent } });
   }, []);
 
   const addFiles = useCallback<AppContextValue['addFiles']>(
@@ -107,7 +123,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const item = stateRef.current.items.find((candidate) => candidate.id === id);
     if (!item) return;
     dispatch({ type: 'removeItem', id });
-    releaseItem(item);
+    dispatch({
+      type: 'notify',
+      notice: { id: crypto.randomUUID(), tone: 'info', message: `Removed ${item.sourceName}.`, action: { label: 'Undo', run: () => dispatch({ type: 'undo' }) } },
+    });
   }, []);
 
   const outputFilename = useCallback((item: QueueItem, output: EncodedOutput | null = item.output): string => {
@@ -131,23 +150,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const filename = outputFilename(item);
       triggerDownload(item.output.blob, filename);
       dispatch({ type: 'addSavings', before: item.sourceBytes, after: item.output.blob.size, count: 1 });
-      dispatch({ type: 'announce', message: `Downloaded ${filename}, ${formatBytes(item.output.blob.size)}.` });
+      const change = formatSavings(item.sourceBytes, item.output.blob.size);
+      const comparison = change.startsWith('−') ? ` · ${change.slice(1)} smaller` : '';
+      notify('success', `Saved ${filename} · ${formatBytes(item.output.blob.size)}${comparison}`);
     },
-    [outputFilename],
+    [outputFilename, notify],
   );
 
-  const replaceEditedBitmap = useCallback((id: string, bitmap: ImageBitmap | null) => {
-    const previous = stateRef.current.items.find((item) => item.id === id)?.editedBitmap ?? null;
-    dispatch({ type: 'setEditedBitmap', id, bitmap });
-    // Close after React has re-rendered with the new bitmap, so nothing draws a closed one.
-    if (previous && previous !== bitmap) setTimeout(() => previous.close(), 1000);
+  const setEdit = useCallback((id: string, bitmap: ImageBitmap | null, cutout: Cutout | null = null, mergeKey?: string) => {
+    dispatch({ type: 'setEdit', id, bitmap, cutout, mergeKey });
   }, []);
 
   const selectedItem = state.items.find((item) => item.id === state.selectedId) ?? null;
 
   const value = useMemo<AppContextValue>(
-    () => ({ state, dispatch, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, replaceEditedBitmap }),
-    [state, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, replaceEditedBitmap],
+    () => ({ state, dispatch, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit }),
+    [state, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

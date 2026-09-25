@@ -5,7 +5,12 @@ import { clampPan, type Point } from '../../lib/cropMath';
 import { get2d } from '../../lib/drawing';
 import type { QueueItem } from '../../lib/types';
 import type { PreviewReference } from '../../hooks/useDebouncedEncode';
-import { Button, focusRing } from '../ui/Button';
+import { FORMAT_LABELS, formatBytes } from '../../lib/format';
+import { getItemPreset } from '../../state/appReducer';
+import { useApp } from '../../state/AppContext';
+import { HintChip, Stage, Toolbar } from '../layout/Stage';
+import { focusRing, Segmented } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import { checkerboardClass } from './Checkerboard';
 
 type Zoom = 'fit' | 1 | 2;
@@ -21,6 +26,8 @@ type Drag = { pointerId: number; kind: 'split' | 'pan'; startX: number; startY: 
 
 /** Before/after split: left = source crop resampled to the output size, right = the encoded file. */
 export const CompareView = ({ item, reference }: CompareViewProps) => {
+  const { state } = useApp();
+  const preset = getItemPreset(state, item);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [zoom, setZoom] = useState<Zoom>('fit');
@@ -43,7 +50,16 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
   useEffect(() => setPan({ x: 0, y: 0 }), [zoom]);
 
   if (!output) {
-    return <p className="p-6 text-sm text-slate-500 dark:text-slate-400">The comparison appears once the first preview is encoded.</p>;
+    return (
+      <>
+        <Toolbar label="Compare zoom">
+          <span className="text-xs text-ink-3">Left: source resampled · Right: encoded file</span>
+        </Toolbar>
+        <Stage>
+          <HintChip>The comparison appears once the first preview is encoded.</HintChip>
+        </Stage>
+      </>
+    );
   }
 
   const splitFromPointer = (clientX: number) => {
@@ -103,75 +119,82 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
     ? { left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }
     : undefined;
 
-  return (
-    <div className="flex h-full min-h-72 flex-col">
-      <div className="flex flex-wrap items-center gap-2 px-3 pt-2" role="toolbar" aria-label="Compare zoom">
-        {ZOOMS.map((option) => (
-          <Button key={option.label} size="sm" pressed={zoom === option.value} onClick={() => setZoom(option.value)}>
-            {option.label}
-          </Button>
-        ))}
-        <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">
-          Left: source resampled · Right: encoded file{zoomed ? ' · drag to pan' : ''}
-        </span>
-      </div>
+  const encodedLabel = `Encoded · ${FORMAT_LABELS[preset.format]}${preset.format === 'png' ? '' : ` q${output.quality}`} · ${formatBytes(output.blob.size)}`;
+  const handleX = view ? view.offsetX + (view.displayWidth * split) / 100 : 0;
 
-      <div
-        ref={containerRef}
-        onPointerDown={(event) => handlePointerDown(event, zoomed ? 'pan' : 'split')}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        className={cn('relative flex-1 touch-none overflow-hidden select-none', {
-          'cursor-grab active:cursor-grabbing': zoomed,
-          'cursor-col-resize': !zoomed,
-        })}
-      >
-        {view ? (
-          <>
-            <div aria-hidden="true" className={cn('absolute', checkerboardClass)} style={layerStyle} />
-            <img
-              src={output.url}
-              alt="Encoded output"
-              draggable={false}
-              className={cn('absolute max-w-none', { '[image-rendering:pixelated]': zoom === 2 })}
-              style={layerStyle}
-            />
-            <canvas
-              ref={canvasRef}
-              aria-label="Source crop, resampled to the output size"
-              className={cn('absolute', { '[image-rendering:pixelated]': zoom === 2, invisible: !reference })}
-              style={{ ...layerStyle, clipPath: `inset(0 ${100 - split}% 0 0)` }}
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute w-0.5 -translate-x-1/2 bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.3)]"
-              style={{ left: view.offsetX + (view.displayWidth * split) / 100, top: view.offsetY, height: view.displayHeight }}
-            />
-            <div
-              role="slider"
-              tabIndex={0}
-              aria-label="Before/after split position"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={split}
-              aria-valuetext={`${split}% source, ${100 - split}% encoded`}
-              onPointerDown={(event) => handlePointerDown(event, 'split')}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-              onKeyDown={handleSliderKeyDown}
-              className={cn(
-                'absolute flex size-8 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center rounded-full border border-slate-300 bg-white text-xs text-slate-700 shadow-md',
-                focusRing,
-              )}
-              style={{ left: view.offsetX + (view.displayWidth * split) / 100, top: Math.min(container.height - 24, Math.max(24, view.offsetY + view.displayHeight / 2)) }}
-            >
-              ⇆
-            </div>
-          </>
-        ) : null}
-      </div>
-    </div>
+  return (
+    <>
+      <Toolbar label="Compare zoom">
+        <Segmented<Zoom> label="Zoom" value={zoom} options={ZOOMS} onChange={setZoom} />
+        <span className="ml-2 text-xs text-ink-3">{zoomed ? 'Drag to pan' : 'Drag to compare'}</span>
+        <span className="min-w-4 flex-1" />
+        <span className="text-xs text-ink-3 max-lg:hidden">Left: source resampled · Right: encoded file</span>
+      </Toolbar>
+      <Stage>
+        <div
+          ref={containerRef}
+          onPointerDown={(event) => handlePointerDown(event, zoomed ? 'pan' : 'split')}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          className={cn('absolute inset-0 touch-none overflow-hidden select-none', {
+            'cursor-grab active:cursor-grabbing': zoomed,
+            'cursor-col-resize': !zoomed,
+          })}
+        >
+          {view ? (
+            <>
+              <div aria-hidden="true" className={cn('absolute', checkerboardClass)} style={layerStyle} />
+              <img
+                src={output.url}
+                alt="Encoded output"
+                draggable={false}
+                className={cn('absolute max-w-none', { '[image-rendering:pixelated]': zoom === 2 })}
+                style={layerStyle}
+              />
+              <canvas
+                ref={canvasRef}
+                aria-label="Source crop, resampled to the output size"
+                className={cn('absolute', { '[image-rendering:pixelated]': zoom === 2, invisible: !reference })}
+                style={{ ...layerStyle, clipPath: `inset(0 ${100 - split}% 0 0)` }}
+              />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute w-0.5 -translate-x-1/2 bg-white shadow-[0_0_0_1px_rgb(0_0_0/0.25)]"
+                style={{ left: handleX, top: Math.max(0, view.offsetY), height: Math.min(container.height, view.displayHeight) }}
+              />
+              <div
+                role="slider"
+                tabIndex={0}
+                aria-label="Before/after split position"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={split}
+                aria-valuetext={`${split}% source, ${100 - split}% encoded`}
+                onPointerDown={(event) => handlePointerDown(event, 'split')}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                onKeyDown={handleSliderKeyDown}
+                className={cn(
+                  'absolute flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center rounded-full bg-white text-[#191918] shadow-float',
+                  'before:absolute before:-inset-1', // 44px touch target
+                  focusRing,
+                )}
+                style={{ left: handleX, top: Math.min(container.height - 24, Math.max(24, view.offsetY + view.displayHeight / 2)) }}
+              >
+                <Icon name="split" className="size-4" strokeWidth={1.8} />
+              </div>
+              <span className="pointer-events-none absolute top-3 left-3 rounded-md bg-[rgb(24_24_22/.8)] px-2 py-1 text-[11px] font-semibold text-white">
+                Source · resampled
+              </span>
+              <span className="pointer-events-none absolute top-3 right-3 rounded-md bg-[rgb(24_24_22/.8)] px-2 py-1 font-mono text-[11px] font-semibold text-white">
+                {encodedLabel}
+              </span>
+            </>
+          ) : null}
+        </div>
+      </Stage>
+    </>
   );
 };

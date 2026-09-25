@@ -26,3 +26,18 @@ export const copyImageToClipboard = async (blob: Blob): Promise<void> => {
   if (!canCopyImages()) throw new Error("This browser can't copy images to the clipboard.");
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': toPng(blob) })]);
 };
+
+/** True when the system share sheet accepts image files (iOS/Android), a fallback for "Copy". */
+export const canShareImage = (blob: Blob, name: string): boolean => {
+  if (typeof navigator.canShare !== 'function' || typeof File === 'undefined') return false;
+  try {
+    return navigator.canShare({ files: [new File([blob], name, { type: blob.type })] });
+  } catch {
+    return false;
+  }
+};
+
+/** Opens the share sheet with the image. Must run inside a click; "Copy" and "Save Image" live there on iOS. */
+export const shareImage = async (blob: Blob, name: string): Promise<void> => {
+  await navigator.share({ files: [new File([blob], name, { type: blob.type })] });
+};

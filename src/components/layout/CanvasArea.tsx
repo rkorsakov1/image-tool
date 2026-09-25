@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { computeAutoCrop, resolveOutputGeometry, rotateTransform, targetAspect, transformedSize } from '../../lib/cropMath';
 import { cn } from '../../lib/cn';
+import { formatBytes } from '../../lib/format';
 import type { Preset, QueueItem } from '../../lib/types';
 import type { PreviewReference } from '../../hooks/useDebouncedEncode';
 import { getItemPreset, type Mode } from '../../state/appReducer';
@@ -10,8 +11,9 @@ import { EmptyDropZone } from '../input/DropZone';
 import { CompareView } from '../preview/CompareView';
 import { BackgroundPanel } from '../retouch/BackgroundPanel';
 import { RetouchPanel } from '../retouch/RetouchPanel';
-import { Button, focusRing } from '../ui/Button';
+import { Button, focusRing, Keycap } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { Stage, Toolbar, ToolbarDivider } from './Stage';
 
 export const MODES: { mode: Mode; label: string; key: string }[] = [
   { mode: 'crop', label: 'Crop', key: 'C' },
@@ -33,7 +35,7 @@ const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => vo
   };
 
   return (
-    <div role="tablist" aria-label="Editor mode" className="flex gap-1" onKeyDown={handleKeyDown}>
+    <div role="tablist" aria-label="Editor mode" className="inline-flex shrink-0 rounded-[9px] bg-sunken p-0.75" onKeyDown={handleKeyDown}>
       {MODES.map((entry) => {
         const selected = entry.mode === mode;
         return (
@@ -44,21 +46,49 @@ const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => vo
             role="tab"
             aria-selected={selected}
             aria-controls="editor-panel"
+            aria-keyshortcuts={entry.key}
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(entry.mode)}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-sm font-medium',
-              focusRing,
-              {
-                'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900': selected,
-                'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800': !selected,
-              },
-            )}
+            className={cn('flex h-7.5 items-center gap-2 rounded-[7px] px-2.5 text-[13px] max-lg:h-10 max-lg:px-3', focusRing, {
+              'bg-raised font-semibold text-ink ring-1 ring-line-strong': selected,
+              'text-ink-2 hover:text-ink': !selected,
+            })}
           >
-            {entry.label} <kbd className="ml-1 hidden text-[10px] opacity-60 sm:inline">{entry.key}</kbd>
+            {entry.label}
+            <Keycap className="max-lg:hidden">{entry.key}</Keycap>
           </button>
         );
       })}
+    </div>
+  );
+};
+
+export const UndoRedo = () => {
+  const { state, dispatch } = useApp();
+  return (
+    <div className="flex shrink-0 items-center">
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={state.history.past.length === 0}
+        onClick={() => dispatch({ type: 'undo' })}
+        aria-label="Undo"
+        aria-keyshortcuts="Control+Z Meta+Z"
+        title="Undo (Ctrl/⌘+Z)"
+      >
+        <Icon name="undo" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={state.history.future.length === 0}
+        onClick={() => dispatch({ type: 'redo' })}
+        aria-label="Redo"
+        aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
+        title="Redo (Ctrl/⌘+Shift+Z)"
+      >
+        <Icon name="redo" />
+      </Button>
     </div>
   );
 };
@@ -73,102 +103,114 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
   const setTransform = (transform: QueueItem['transform']) => dispatch({ type: 'setTransform', id: item.id, transform });
 
   return (
-    <div className="space-y-1.5">
-      <div role="toolbar" aria-label="Crop tools" className="flex flex-wrap items-center gap-1">
-        <Button size="sm" variant="ghost" aria-label="Rotate 90° left" title="Rotate left" onClick={() => setTransform(rotateTransform(item.transform, 'left'))}>
-          <Icon name="rotateLeft" />
-        </Button>
-        <Button size="sm" variant="ghost" aria-label="Rotate 90° right" title="Rotate right" onClick={() => setTransform(rotateTransform(item.transform, 'right'))}>
-          <Icon name="rotateRight" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Flip horizontal"
-          title="Flip horizontal"
-          aria-pressed={item.transform.flipH}
-          onClick={() => setTransform({ ...item.transform, flipH: !item.transform.flipH })}
-        >
-          <Icon name="flipH" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Flip vertical"
-          title="Flip vertical"
-          aria-pressed={item.transform.flipV}
-          onClick={() => setTransform({ ...item.transform, flipV: !item.transform.flipV })}
-        >
-          <Icon name="flipV" />
-        </Button>
-        <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Rule-of-thirds overlay"
-          title="Rule of thirds"
-          aria-pressed={state.prefs.showThirds}
-          disabled={contain}
-          onClick={() => dispatch({ type: 'setPref', patch: { showThirds: !state.prefs.showThirds } })}
-        >
-          <Icon name="grid" />
-        </Button>
-        <Button size="sm" variant="ghost" disabled={contain || item.crop === null} onClick={() => dispatch({ type: 'setCrop', id: item.id, crop: null })}>
-          <Icon name="reset" /> Reset crop <kbd className="text-[10px] opacity-60">R</kbd>
-        </Button>
-        <p className="ml-auto text-xs tabular-nums text-slate-600 dark:text-slate-300">
-          {contain ? (
-            <>Whole image {image.width} × {image.height}</>
-          ) : (
-            <>
-              Crop {Math.round(crop.width)} × {Math.round(crop.height)}
-            </>
-          )}{' '}
-          → <strong>{geometry.outWidth} × {geometry.outHeight}</strong>
-        </p>
-      </div>
+    <Toolbar label="Crop tools">
+      <Button variant="ghost" size="icon" aria-label="Rotate 90° left" title="Rotate left" onClick={() => setTransform(rotateTransform(item.transform, 'left'))}>
+        <Icon name="rotateLeft" />
+      </Button>
+      <Button variant="ghost" size="icon" aria-label="Rotate 90° right" title="Rotate right" onClick={() => setTransform(rotateTransform(item.transform, 'right'))}>
+        <Icon name="rotateRight" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Flip horizontal"
+        title="Flip horizontal"
+        pressed={item.transform.flipH}
+        onClick={() => setTransform({ ...item.transform, flipH: !item.transform.flipH })}
+      >
+        <Icon name="flipH" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Flip vertical"
+        title="Flip vertical"
+        pressed={item.transform.flipV}
+        onClick={() => setTransform({ ...item.transform, flipV: !item.transform.flipV })}
+      >
+        <Icon name="flipV" />
+      </Button>
+      <ToolbarDivider />
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Rule-of-thirds overlay"
+        title="Rule of thirds"
+        pressed={state.prefs.showThirds}
+        disabled={contain}
+        onClick={() => dispatch({ type: 'setPref', patch: { showThirds: !state.prefs.showThirds } })}
+      >
+        <Icon name="grid" />
+      </Button>
+      <Button variant="ghost" size="sm" disabled={contain || item.crop === null} onClick={() => dispatch({ type: 'setCrop', id: item.id, crop: null })} aria-keyshortcuts="R">
+        <Icon name="reset" /> Reset <Keycap className="max-lg:hidden">R</Keycap>
+      </Button>
+      <span className="min-w-4 flex-1" />
       {geometry.upscaleCapped ? (
-        <p className="rounded-md bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
-          The {contain ? 'image' : 'crop'} is smaller than {geometry.requestedWidth} × {geometry.requestedHeight}, so the output is capped at{' '}
-          {geometry.outWidth} × {geometry.outHeight} to avoid upscaling. Turn on “Allow upscaling” to enlarge it.
-        </p>
+        <span
+          className="mr-2 flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-warning-bg pr-0.5 pl-2 text-xs text-warning ring-1 ring-warning-line"
+          title={`The ${contain ? 'image' : 'crop'} is smaller than ${geometry.requestedWidth} × ${geometry.requestedHeight}, so it isn't enlarged.`}
+        >
+          <Icon name="warn" className="size-3.5" />
+          Capped at <span className="font-mono">{geometry.outWidth} × {geometry.outHeight}</span>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: 'setOverrides', id: item.id, patch: { allowUpscale: true } })}
+            className={cn('h-6 rounded bg-raised px-1.5 font-medium text-ink ring-1 ring-warning-line hover:bg-warning-bg', focusRing)}
+          >
+            Allow upscaling
+          </button>
+        </span>
       ) : null}
-    </div>
+      <span className="shrink-0 font-mono text-xs text-ink-3">
+        {contain ? `Whole image ${image.width} × ${image.height}` : `Crop ${Math.round(crop.width)} × ${Math.round(crop.height)}`} →{' '}
+        <strong className="font-semibold text-ink">
+          {geometry.outWidth} × {geometry.outHeight}
+        </strong>
+      </span>
+    </Toolbar>
   );
 };
 
 export const CanvasArea = ({ reference }: { reference: PreviewReference | null }) => {
   const { state, dispatch, selectedItem } = useApp();
 
-  if (!selectedItem) return <EmptyDropZone />;
+  if (!selectedItem) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col lg:p-3">
+        <EmptyDropZone />
+      </div>
+    );
+  }
 
   const preset = getItemPreset(state, selectedItem);
   const mode = MODES.some((entry) => entry.mode === state.mode) ? state.mode : 'crop';
+  const bitmap = selectedItem.editedBitmap ?? selectedItem.sourceBitmap;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-0 flex-1 flex-col lg:px-3 lg:pb-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] max-lg:px-4 max-lg:pt-1">
         <ModeTabs mode={mode} onChange={(next) => dispatch({ type: 'setMode', mode: next })} />
-        <p className="max-w-full truncate text-xs text-slate-500 dark:text-slate-400" title={selectedItem.sourceName}>
-          {selectedItem.sourceName} · {selectedItem.sourceBitmap.width} × {selectedItem.sourceBitmap.height}
+        <span className="flex-1" />
+        <span className="max-lg:hidden">
+          <UndoRedo />
+        </span>
+        <p className="min-w-0 truncate font-mono text-[11px] text-ink-3 max-lg:hidden" title={selectedItem.sourceName}>
+          {selectedItem.sourceName} · {bitmap.width} × {bitmap.height} · {formatBytes(selectedItem.sourceBytes)}
         </p>
       </div>
-      <div id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} className="flex min-h-72 flex-1 flex-col gap-2">
+      <div id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} className="flex min-h-0 flex-1 flex-col gap-1 max-lg:gap-0">
         {mode === 'crop' ? (
           <>
             <CropToolbar item={selectedItem} preset={preset} />
-            <div className="min-h-72 flex-1 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-950">
+            <Stage>
               <CropEditor item={selectedItem} preset={preset} />
-            </div>
+            </Stage>
           </>
         ) : null}
         {mode === 'retouch' ? <RetouchPanel key={selectedItem.id} item={selectedItem} /> : null}
         {mode === 'background' ? <BackgroundPanel key={selectedItem.id} item={selectedItem} /> : null}
-        {mode === 'compare' ? (
-          <div className="min-h-72 flex-1 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-950">
-            <CompareView item={selectedItem} reference={reference} />
-          </div>
-        ) : null}
+        {mode === 'compare' ? <CompareView item={selectedItem} reference={reference} /> : null}
       </div>
     </div>
   );

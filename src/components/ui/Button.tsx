@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
-type Size = 'sm' | 'md' | 'lg' | 'icon';
+type Size = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm' | 'icon-lg';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; pressed?: boolean };
 
@@ -17,10 +17,13 @@ export const Button = ({ variant = 'secondary', size = 'md', pressed, className,
       'disabled:cursor-not-allowed disabled:opacity-45',
       focusRing,
       {
-        'h-7.5 px-2.5 text-[13px] font-medium': size === 'sm',
+        'h-6.5 px-2 text-xs font-medium': size === 'xs',
+        'h-7.5 px-2.5 text-[13px] font-medium max-lg:h-10': size === 'sm',
         'h-8 px-3 text-[13px] font-medium max-lg:h-11': size === 'md',
         'h-11 px-4 text-sm font-semibold': size === 'lg',
         'size-8 max-lg:size-11': size === 'icon',
+        'size-7 max-lg:size-11': size === 'icon-sm',
+        'size-11': size === 'icon-lg',
         'bg-primary text-on-primary font-semibold hover:bg-primary-hover disabled:hover:bg-primary': variant === 'primary',
         'border border-line-strong bg-raised text-ink hover:bg-sunken/60 aria-pressed:bg-sunken': variant === 'secondary',
         'text-ink-2 hover:bg-sunken hover:text-ink aria-pressed:bg-sunken aria-pressed:text-ink': variant === 'ghost',

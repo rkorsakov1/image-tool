@@ -1,6 +1,7 @@
 import { IDENTITY_TRANSFORM } from '../lib/cropMath';
 import { BUILTIN_PRESETS, effectiveOverrides, findPreset, isBuiltinPreset, resolvePreset, uniquePresetName } from '../lib/presets';
-import type { CropRect, EncodedOutput, Preset, QueueItem, Transform } from '../lib/types';
+import type { CropRect, Cutout, EncodedOutput, Preset, QueueItem, Transform } from '../lib/types';
+import { EMPTY_HISTORY, type History } from './history';
 
 export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
 
@@ -8,9 +9,11 @@ export type Prefs = { showThirds: boolean };
 
 export type Notice = {
   id: string;
-  tone: 'info' | 'warning' | 'error';
+  tone: 'info' | 'success' | 'warning' | 'error';
   message: string;
   action?: { label: string; run: () => void };
+  /** Stays until dismissed (errors always do). */
+  persistent?: boolean;
 };
 
 export type AppState = {
@@ -26,6 +29,7 @@ export type AppState = {
   notices: Notice[];
   /** Text for the aria-live region. */
   announcement: string;
+  history: History;
 };
 
 export type NewItem = Pick<QueueItem, 'id' | 'sourceName' | 'sourceBytes' | 'sourceType' | 'sourceBitmap'>;
@@ -36,15 +40,16 @@ export type AppAction =
   | { type: 'selectItem'; id: string }
   | { type: 'selectRelative'; offset: 1 | -1 }
   | { type: 'setMode'; mode: Mode }
-  | { type: 'setCrop'; id: string; crop: CropRect | null }
+  | { type: 'setCrop'; id: string; crop: CropRect | null; gesture?: string }
   | { type: 'setTransform'; id: string; transform: Transform }
   | { type: 'setItemPreset'; id: string; presetId: string }
   | { type: 'applyPresetToAll'; presetId: string }
-  | { type: 'setOverrides'; id: string; patch: Partial<Preset> }
+  | { type: 'setOverrides'; id: string; patch: Partial<Preset>; gesture?: string }
   | { type: 'resetOverrides'; id: string }
   | { type: 'saveOverridesToPreset'; id: string }
   | { type: 'saveOverridesAsNewPreset'; id: string; name: string; newPresetId: string }
-  | { type: 'setEditedBitmap'; id: string; bitmap: ImageBitmap | null }
+  /** Replaces the retouched image (null = back to the source) and the refinable cut-out, if any. */
+  | { type: 'setEdit'; id: string; bitmap: ImageBitmap | null; cutout: Cutout | null; mergeKey?: string }
   | { type: 'encodeStarted'; id: string; revision: number }
   | { type: 'encodeFinished'; id: string; revision: number; output: EncodedOutput }
   | { type: 'encodeFailed'; id: string; revision: number; error: string }
@@ -71,6 +76,7 @@ export const createInitialState = (persisted: { presets: Preset[]; lastPresetId:
   savings: { bytes: 0, count: 0 },
   notices: [],
   announcement: '',
+  history: EMPTY_HISTORY,
 });
 
 /** Fields whose change invalidates a manual crop (aspect or crop semantics change). */
@@ -98,6 +104,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       const added: QueueItem[] = action.items.map((item) => ({
         ...item,
         editedBitmap: null,
+        cutout: null,
         transform: IDENTITY_TRANSFORM,
         crop: null,
         presetId,
@@ -205,8 +212,8 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       };
     }
 
-    case 'setEditedBitmap':
-      return updateItem(state, action.id, (item) => bump({ ...item, editedBitmap: action.bitmap }));
+    case 'setEdit':
+      return updateItem(state, action.id, (item) => bump({ ...item, editedBitmap: action.bitmap, cutout: action.cutout }));
 
     case 'encodeStarted':
       return updateItem(state, action.id, (item) =>

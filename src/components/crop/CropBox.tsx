@@ -11,9 +11,8 @@ import {
   type ViewTransform,
 } from '../../lib/cropMath';
 import type { CropRect } from '../../lib/types';
-import { focusRing } from '../ui/Button';
 
-type Drag = { pointerId: number; kind: 'move' | Corner; start: Point; startCrop: CropRect };
+type Drag = { pointerId: number; kind: 'move' | Corner; start: Point; startCrop: CropRect; gesture: string };
 
 type CropBoxProps = {
   crop: CropRect;
@@ -22,15 +21,18 @@ type CropBoxProps = {
   view: ViewTransform;
   containerRef: RefObject<HTMLElement | null>;
   showThirds: boolean;
-  onChange: (crop: CropRect) => void;
+  /** `gesture` identifies one pointer drag, so the whole drag is a single undo step. */
+  onChange: (crop: CropRect, gesture?: string) => void;
   onReset: () => void;
 };
 
-const CORNERS: { corner: Corner; label: string; className: string }[] = [
-  { corner: 'nw', label: 'top-left', className: '-left-2 -top-2 cursor-nwse-resize' },
-  { corner: 'ne', label: 'top-right', className: '-right-2 -top-2 cursor-nesw-resize' },
-  { corner: 'sw', label: 'bottom-left', className: '-bottom-2 -left-2 cursor-nesw-resize' },
-  { corner: 'se', label: 'bottom-right', className: '-bottom-2 -right-2 cursor-nwse-resize' },
+// Each handle is a 44px touch target centered on the corner; inside it, the visible 20px
+// L-bracket sits 3px outside the crop edge.
+const CORNERS: { corner: Corner; label: string; hit: string; bracket: string }[] = [
+  { corner: 'nw', label: 'top-left', hit: '-left-5.5 -top-5.5 cursor-nwse-resize', bracket: 'left-[19px] top-[19px] border-t-4 border-l-4' },
+  { corner: 'ne', label: 'top-right', hit: '-right-5.5 -top-5.5 cursor-nesw-resize', bracket: 'right-[19px] top-[19px] border-t-4 border-r-4' },
+  { corner: 'sw', label: 'bottom-left', hit: '-bottom-5.5 -left-5.5 cursor-nesw-resize', bracket: 'bottom-[19px] left-[19px] border-b-4 border-l-4' },
+  { corner: 'se', label: 'bottom-right', hit: '-bottom-5.5 -right-5.5 cursor-nwse-resize', bracket: 'bottom-[19px] right-[19px] border-b-4 border-r-4' },
 ];
 
 const ARROWS: Record<string, Point> = {
@@ -47,10 +49,10 @@ const cornerPoint = (crop: CropRect, corner: Corner): Point => ({
 
 export const ThirdsOverlay = () => (
   <div aria-hidden="true" className="pointer-events-none absolute inset-0">
-    <div className="absolute inset-y-0 left-1/3 w-px bg-white/60" />
-    <div className="absolute inset-y-0 left-2/3 w-px bg-white/60" />
-    <div className="absolute inset-x-0 top-1/3 h-px bg-white/60" />
-    <div className="absolute inset-x-0 top-2/3 h-px bg-white/60" />
+    <div className="absolute inset-y-0 left-1/3 w-px bg-white/40" />
+    <div className="absolute inset-y-0 left-2/3 w-px bg-white/40" />
+    <div className="absolute inset-x-0 top-1/3 h-px bg-white/40" />
+    <div className="absolute inset-x-0 top-2/3 h-px bg-white/40" />
   </div>
 );
 
@@ -69,7 +71,7 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus({ preventScroll: true });
-    drag.current = { pointerId: event.pointerId, kind, start: toSource(event), startCrop: crop };
+    drag.current = { pointerId: event.pointerId, kind, start: toSource(event), startCrop: crop, gesture: crypto.randomUUID() };
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -78,10 +80,10 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
     event.stopPropagation();
     const point = toSource(event);
     if (current.kind === 'move') {
-      onChange(moveCrop(current.startCrop, point.x - current.start.x, point.y - current.start.y, bounds));
+      onChange(moveCrop(current.startCrop, point.x - current.start.x, point.y - current.start.y, bounds), current.gesture);
       return;
     }
-    onChange(resizeCropFromCorner(current.startCrop, current.kind, point, aspect, bounds));
+    onChange(resizeCropFromCorner(current.startCrop, current.kind, point, aspect, bounds), current.gesture);
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
@@ -138,13 +140,13 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
       onDoubleClick={onReset}
       onKeyDown={handleBoxKeyDown}
       className={cn(
-        'absolute cursor-move touch-none border border-white shadow-[0_0_0_9999px_rgb(2_6_23/0.55)] outline-offset-4',
-        focusRing,
+        'group absolute cursor-move touch-none outline outline-1 outline-white',
+        'focus-visible:outline-2 focus-visible:outline-accent',
       )}
       style={{ left, top, width, height }}
     >
       {showThirds ? <ThirdsOverlay /> : null}
-      {CORNERS.map(({ corner, label, className }) => (
+      {CORNERS.map(({ corner, label, hit, bracket }) => (
         <div
           key={corner}
           role="button"
@@ -156,8 +158,17 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onKeyDown={(event) => handleCornerKeyDown(event, corner)}
-          className={cn('absolute size-4 touch-none rounded-sm border-2 border-sky-500 bg-white shadow', focusRing, className)}
-        />
+          className={cn('peer absolute size-11 touch-none outline-none', hit)}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              'pointer-events-none absolute size-5 border-white drop-shadow-[0_0_1px_rgb(0_0_0/.5)]',
+              'group-focus-visible:border-accent in-focus-visible:border-accent',
+              bracket,
+            )}
+          />
+        </div>
       ))}
     </div>
   );

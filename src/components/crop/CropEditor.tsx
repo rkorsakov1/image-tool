@@ -26,10 +26,21 @@ export const CropEditor = ({ item, preset }: CropEditorProps) => {
   const crop = item.crop ?? computeAutoCrop(image, aspect);
 
   return (
-    <div ref={containerRef} className="relative h-full min-h-72 w-full touch-none overflow-hidden select-none">
+    <div ref={containerRef} className="absolute inset-0 touch-none overflow-hidden select-none">
       {view && !contain ? (
         <>
           <ImageCanvas bitmap={bitmap} transform={item.transform} view={view} />
+          {/* Dims the image outside the crop, and only the image (not the stage around it). */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute overflow-hidden"
+            style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }}
+          >
+            <div
+              className="absolute shadow-[0_0_0_9999px_var(--color-dim)]"
+              style={{ left: crop.x * view.scale, top: crop.y * view.scale, width: crop.width * view.scale, height: crop.height * view.scale }}
+            />
+          </div>
           <CropBox
             crop={crop}
             bounds={image}
@@ -37,7 +48,7 @@ export const CropEditor = ({ item, preset }: CropEditorProps) => {
             view={view}
             containerRef={containerRef}
             showThirds={state.prefs.showThirds}
-            onChange={(next) => dispatch({ type: 'setCrop', id: item.id, crop: next })}
+            onChange={(next, gesture) => dispatch({ type: 'setCrop', id: item.id, crop: next, gesture })}
             onReset={() => dispatch({ type: 'setCrop', id: item.id, crop: null })}
           />
         </>
@@ -48,7 +59,7 @@ export const CropEditor = ({ item, preset }: CropEditorProps) => {
           {/* The matte is a user-chosen runtime color, so it can't be a Tailwind class. */}
           <div
             aria-hidden="true"
-            className="absolute shadow-lg ring-1 ring-slate-400/40"
+            className="absolute shadow-float"
             style={{
               left: view.offsetX,
               top: view.offsetY,

@@ -47,6 +47,17 @@ export type EncodedOutput = {
   warning: string | null;
 };
 
+/** A background cut-out that can still be refined. All bitmaps are immutable snapshots, so undo can swap them. */
+export type Cutout = {
+  /** The image before removal. */
+  base: ImageBitmap;
+  /** Alpha mask at base resolution (white, alpha = coverage). */
+  mask: ImageBitmap;
+  /** Fill color behind the subject, or null for transparency. */
+  background: string | null;
+  provider: 'webgpu' | 'wasm';
+};
+
 export type QueueStatus = 'idle' | 'encoding' | 'ready' | 'error';
 
 export type QueueItem = {
@@ -58,6 +69,8 @@ export type QueueItem = {
   sourceBitmap: ImageBitmap;
   /** after retouch / bg removal; null = none */
   editedBitmap: ImageBitmap | null;
+  /** Background removal in progress: editedBitmap is `base` composed with `mask`. */
+  cutout: Cutout | null;
   transform: Transform;
   /** null = auto (recomputed from preset) */
   crop: CropRect | null;

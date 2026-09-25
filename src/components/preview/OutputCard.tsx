@@ -1,87 +1,108 @@
 import { cn } from '../../lib/cn';
 import { formatBytes, formatSavings, FORMAT_LABELS } from '../../lib/format';
 import type { Preset, QueueItem } from '../../lib/types';
+import { sectionLabelClass } from '../ui/Button';
+import { Spinner } from '../ui/Icon';
 import { checkerboardClass } from './Checkerboard';
 
-type OutputCardProps = { item: QueueItem; preset: Preset };
+type OutputCardProps = { item: QueueItem | null; preset: Preset };
 
-const Spinner = () => (
-  <span
-    aria-hidden="true"
-    className="inline-block size-3.5 animate-spin rounded-full border-2 border-sky-500 border-t-transparent motion-reduce:animate-none"
-  />
-);
+type Status = { tone: 'success' | 'muted' | 'danger'; label: string; busy?: boolean };
+
+const outputStatus = (item: QueueItem | null): Status => {
+  if (!item) return { tone: 'muted', label: 'Waiting for an image' };
+  if (item.status === 'error') return { tone: 'danger', label: 'Error' };
+  const stale = item.outputRevision !== item.revision;
+  if (stale) return item.status === 'encoding' || item.output ? { tone: 'muted', label: 'Encoding', busy: true } : { tone: 'muted', label: 'Waiting' };
+  if (item.output?.warning) return { tone: 'danger', label: 'Target missed' };
+  return { tone: 'success', label: 'Encoded · exact' };
+};
 
 /** The real encoded output: thumbnail, exact size, dimensions, quality and savings. */
 export const OutputCard = ({ item, preset }: OutputCardProps) => {
-  const { output } = item;
-  const stale = item.outputRevision !== item.revision;
-  const encoding = stale && item.status !== 'error';
+  const output = item?.output ?? null;
+  const stale = item !== null && item.outputRevision !== item.revision;
+  const status = outputStatus(item);
   const qualityLabel = preset.format === 'png' ? 'lossless' : `q${output?.quality ?? preset.quality}`;
+  const ratio = item && output ? Math.min(1, output.blob.size / Math.max(1, item.sourceBytes)) : 0;
 
   return (
-    <section aria-labelledby="output-heading" className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 id="output-heading" className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
+    <section aria-labelledby="output-heading" aria-busy={status.busy}>
+      <div className="mb-2.5 flex items-center justify-between">
+        <h3 id="output-heading" className={sectionLabelClass}>
           Output
         </h3>
-        {encoding ? (
-          <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <Spinner /> Encoding…
-          </span>
-        ) : null}
+        <span
+          className={cn('flex items-center gap-1.5 text-[11px]', {
+            'text-success': status.tone === 'success',
+            'text-ink-3': status.tone === 'muted',
+            'text-danger': status.tone === 'danger',
+          })}
+        >
+          {status.busy ? <Spinner /> : <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />}
+          {status.label}
+        </span>
       </div>
 
-      <div className="flex gap-3">
-        <div className={cn('flex size-24 shrink-0 items-center justify-center overflow-hidden rounded', checkerboardClass)}>
+      <div className="flex items-center gap-3">
+        <div className={cn('flex h-[47px] w-[84px] shrink-0 items-center justify-center overflow-hidden rounded-sm', output ? checkerboardClass : 'bg-sunken')}>
           {output ? (
             <img
               src={output.url}
               alt={`Encoded output preview, ${output.width} by ${output.height}`}
-              className={cn('max-h-full max-w-full object-contain', { 'opacity-60': stale })}
+              className={cn('max-h-full max-w-full object-contain transition-opacity duration-300', { 'opacity-45': stale })}
             />
-          ) : (
-            <span className="text-xs text-slate-400">—</span>
-          )}
+          ) : null}
         </div>
-
-        {output ? (
-          <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-sm">
-            <dt className="text-slate-500 dark:text-slate-400">Size</dt>
-            <dd className="font-semibold tabular-nums">
-              {formatBytes(output.blob.size)}{' '}
-              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">({output.blob.size.toLocaleString()} B)</span>
-            </dd>
-            <dt className="text-slate-500 dark:text-slate-400">Pixels</dt>
-            <dd className="tabular-nums">
-              {output.width} × {output.height}
-            </dd>
-            <dt className="text-slate-500 dark:text-slate-400">Format</dt>
-            <dd className="flex flex-wrap items-center gap-1.5">
-              {FORMAT_LABELS[preset.format]} {qualityLabel}
-              {output.encoder === 'native' ? (
-                <span
-                  title="The optimized encoder couldn't load, so the browser's built-in encoder was used."
-                  className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900/50 dark:text-amber-100"
-                >
-                  native encoder
+        <div className="min-w-0">
+          <p
+            key={output && !stale ? output.url : 'pending'}
+            className={cn('font-mono text-[26px] leading-tight font-semibold tracking-[-.02em] transition-colors duration-300', {
+              'text-ink-3': stale || !output,
+            })}
+            title={output ? `${output.blob.size.toLocaleString()} bytes` : undefined}
+          >
+            {output ? formatBytes(output.blob.size) : '—'}
+          </p>
+          <p className="flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-ink-3">
+            {output ? (
+              <>
+                <span>
+                  {output.width} × {output.height} · {FORMAT_LABELS[preset.format]} {qualityLabel}
                 </span>
-              ) : null}
-            </dd>
-            <dt className="text-slate-500 dark:text-slate-400">vs source</dt>
-            <dd className="tabular-nums">
-              {formatSavings(item.sourceBytes, output.blob.size)}{' '}
-              <span className="text-xs text-slate-500 dark:text-slate-400">of {formatBytes(item.sourceBytes)}</span>
-            </dd>
-          </dl>
-        ) : (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{item.status === 'error' ? 'Encoding failed.' : 'Preparing preview…'}</p>
-        )}
+                {output.encoder === 'native' ? (
+                  <span
+                    title="The optimized encoder couldn't load, so the browser's built-in encoder was used."
+                    className="rounded-sm bg-warning-bg px-1 font-sans text-[10px] font-semibold tracking-wide text-warning uppercase"
+                  >
+                    Native encoder
+                  </span>
+                ) : null}
+              </>
+            ) : item ? (
+              item.status === 'error' ? 'Encoding failed' : 'Preparing preview…'
+            ) : (
+              'No image yet'
+            )}
+          </p>
+        </div>
       </div>
 
-      {output?.warning && !stale ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{output.warning}</p> : null}
-      {item.status === 'error' && item.error ? (
-        <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">
+      {item && output ? (
+        <div className="mt-3">
+          <div className="h-1 overflow-hidden rounded-full bg-sunken">
+            <div className="h-full rounded-full bg-success-bar transition-[width] duration-300" style={{ width: `${Math.max(2, ratio * 100)}%` }} />
+          </div>
+          <div className="mt-1 flex justify-between font-mono text-[11px] text-ink-3">
+            <span className={cn({ 'text-success': output.blob.size < item.sourceBytes })}>{formatSavings(item.sourceBytes, output.blob.size)} vs source</span>
+            <span>{formatBytes(item.sourceBytes)}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {output?.warning && !stale ? <p className="mt-2 text-xs text-danger">{output.warning}</p> : null}
+      {item?.status === 'error' && item.error ? (
+        <p role="alert" className="mt-2 text-xs text-danger">
           {item.error}
         </p>
       ) : null}

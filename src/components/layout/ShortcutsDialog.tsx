@@ -1,37 +1,43 @@
+import { Keycap } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { IS_MAC } from './SettingsPanel';
 
-const SHORTCUTS: [string, string][] = [
-  ['Ctrl/Cmd+V', 'Paste an image or image URL'],
-  ['Ctrl/Cmd+S or Enter', 'Download current output'],
-  ['N / P', 'Next / previous image'],
-  ['R', 'Reset crop'],
-  ['C / E / B / V', 'Crop / Retouch (Edit) / Background / Compare mode'],
-  ['Arrows, Shift+arrows', 'Nudge crop (1 px / 10 px) when the crop box has focus'],
-  ['+ / −', 'Resize crop around its center'],
-  ['[ / ]', 'Brush size'],
-  ['X', 'Toggle paint / erase'],
-  ['Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z', 'Undo / redo (mask)'],
-  ['?', 'This help'],
+const MOD = IS_MAC ? '⌘' : 'Ctrl';
+
+const SHORTCUTS: [string[][], string][] = [
+  [[[MOD, 'V']], 'Paste image or URL'],
+  [[[MOD, 'S'], ['Enter']], 'Download output'],
+  [[['N'], ['P']], 'Next / previous image'],
+  [[['C'], ['E'], ['B'], ['V']], 'Crop · Retouch · Background · Compare'],
+  [[['R']], 'Reset crop'],
+  [[['←↑↓→']], 'Nudge crop (Shift: 10 px)'],
+  [[['+'], ['−']], 'Resize crop around center'],
+  [[['['], [']']], 'Brush size'],
+  [[['X']], 'Toggle paint / erase'],
+  [[[MOD, 'Z']], 'Undo'],
+  [[[MOD, '⇧', 'Z']], 'Redo'],
+  [[['?']], 'This help'],
 ];
 
 export const ShortcutsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
-  <Dialog open={open} onClose={onClose} title="Keyboard shortcuts">
-    <table className="w-full text-sm">
-      <thead className="sr-only">
-        <tr>
-          <th>Key</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-        {SHORTCUTS.map(([keys, action]) => (
-          <tr key={keys}>
-            <td className="py-1.5 pr-4 font-mono text-xs whitespace-nowrap">{keys}</td>
-            <td className="py-1.5">{action}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Shortcuts are disabled while typing in a text field.</p>
+  <Dialog open={open} onClose={onClose} title="Keyboard shortcuts" className="lg:w-[min(46rem,calc(100vw-2rem))]">
+    <dl className="grid gap-x-8 gap-y-0 sm:grid-cols-2">
+      {SHORTCUTS.map(([combos, action]) => (
+        <div key={action} className="flex min-h-9 items-center justify-between gap-4 border-b border-line py-1.5">
+          <dt className="text-[13px] text-ink-2">{action}</dt>
+          <dd className="flex shrink-0 items-center gap-1.5">
+            <span className="sr-only">{combos.map((combo) => combo.join('+')).join(' or ')}</span>
+            {combos.map((combo) => (
+              <span key={combo.join('+')} className="flex items-center gap-0.5">
+                {combo.map((key) => (
+                  <Keycap key={key}>{key}</Keycap>
+                ))}
+              </span>
+            ))}
+          </dd>
+        </div>
+      ))}
+    </dl>
+    <p className="mt-3 text-xs text-ink-3">Shortcuts pause while you type in a text field.</p>
   </Dialog>
 );

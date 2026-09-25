@@ -64,13 +64,13 @@ export const SharedPresetDialog = () => {
       <p className="mb-3 text-sm">Someone shared these presets with you. They’ll be added to your preset list in this browser.</p>
       <ul className="space-y-2">
         {incoming?.presets.map((preset) => (
-          <li key={preset.id} className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+          <li key={preset.id} className="rounded-md border border-line bg-raised p-2">
             <p className="text-sm font-medium">{preset.name}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{describePreset(preset)}</p>
+            <p className="font-mono text-[11px] text-ink-3">{describePreset(preset)}</p>
           </li>
         ))}
       </ul>
-      {merged ? <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">{describeMergeSummary(merged.summary, incoming?.rejected ?? 0)}.</p> : null}
+      {merged ? <p className="mt-3 text-xs text-ink-3">{describeMergeSummary(merged.summary, incoming?.rejected ?? 0)}.</p> : null}
     </Dialog>
   );
 };

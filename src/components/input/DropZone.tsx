@@ -1,9 +1,43 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { cn } from '../../lib/cn';
 import { useApp } from '../../state/AppContext';
-import { collectDroppedFiles, compareFilePaths, looksLikeImageFile } from '../../state/ingest';
-import { Button, focusRing } from '../ui/Button';
+import { collectDroppedFiles, compareFilePaths, FILE_INPUT_ACCEPT, looksLikeImageFile, SUPPORTED_FORMAT_LABELS } from '../../state/ingest';
+import { Button, Keycap } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { UrlInput } from './UrlInput';
+
+type CornerMotion = 'breathe' | 'snap' | 'none';
+
+const CORNER_POSITIONS = [
+  { key: 'nw', className: 'top-0 left-0 border-t-4 border-l-4', dx: 1, dy: 1 },
+  { key: 'ne', className: 'top-0 right-0 border-t-4 border-r-4', dx: -1, dy: 1 },
+  { key: 'sw', className: 'bottom-0 left-0 border-b-4 border-l-4', dx: 1, dy: -1 },
+  { key: 'se', className: 'right-0 bottom-0 border-r-4 border-b-4', dx: -1, dy: -1 },
+] as const;
+
+/** The crop-mark motif: four accent L-corners. `breathe` drifts them inward, `snap` flies them in. */
+export const CropCorners = ({ motion, inset = 24, size = 40 }: { motion: CornerMotion; inset?: number; size?: number }) => (
+  <div aria-hidden="true" className="pointer-events-none absolute" style={{ inset }}>
+    {CORNER_POSITIONS.map((corner) => {
+      // Breathe drifts 6px inward; snap starts 40px outside.
+      const distance = motion === 'snap' ? -40 : 6;
+      const style = {
+        width: size,
+        height: size,
+        '--dx': `${corner.dx * distance}px`,
+        '--dy': `${corner.dy * distance}px`,
+        animation:
+          motion === 'breathe'
+            ? 'lc-breathe 3.2s var(--ease-std) infinite'
+            : motion === 'snap'
+              ? 'lc-snap .32s var(--ease-out) both'
+              : undefined,
+      } as CSSProperties;
+      return <span key={corner.key} className={cn('absolute border-accent', corner.className)} style={style} />;
+    })}
+  </div>
+);
 
 const hasFiles = (event: DragEvent): boolean => Array.from(event.dataTransfer?.types ?? []).includes('Files');
 
@@ -61,18 +95,22 @@ export const WindowDropTarget = () => {
 
   if (!dragging) return null;
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-sky-500/15 p-6 backdrop-blur-[1px]">
-      <div className="rounded-2xl border-2 border-dashed border-sky-500 bg-white/90 px-10 py-8 text-lg font-medium text-sky-900 dark:bg-slate-900/90 dark:text-sky-100">
-        Drop images or folders to add them
+    <div className="pointer-events-none fixed inset-0 z-50 bg-app/90 backdrop-blur-[2px]">
+      <CropCorners motion="snap" inset={16} size={48} />
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center [animation:lc-rise_.32s_var(--ease-out)]">
+        <p className="text-[52px] leading-none font-[650] tracking-[-.035em] max-lg:text-4xl">Drop to add images</p>
+        <p className="flex items-center gap-1.5 text-sm text-ink-2">
+          <Icon name="lock" className="size-3.5 text-success" /> Files and folders are read locally — nothing is uploaded.
+        </p>
       </div>
     </div>
   );
 };
 
-type FilePickersProps = { compact?: boolean };
+type FilePickersProps = { variant?: 'hero' | 'header' | 'icons' };
 
-/** "Choose files" and "Choose folder" buttons. */
-export const FilePickers = ({ compact = false }: FilePickersProps) => {
+/** "Add files" and "Add folder" buttons with their hidden inputs. */
+export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
   const { addFiles } = useApp();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -90,60 +128,59 @@ export const FilePickers = ({ compact = false }: FilePickersProps) => {
     if (files.length > 0) await addFiles(files);
   };
 
+  const inputs = (
+    <>
+      <input ref={fileInput} type="file" accept={FILE_INPUT_ACCEPT} multiple hidden onChange={handleChange} aria-label="Choose image files" />
+      <input ref={folderInput} type="file" multiple hidden onChange={handleChange} aria-label="Choose a folder of images" />
+    </>
+  );
+
+  if (variant === 'icons') {
+    return (
+      <div className="flex gap-1">
+        <Button size="icon" variant="ghost" onClick={() => fileInput.current?.click()} aria-label="Add files">
+          <Icon name="upload" />
+        </Button>
+        {inputs}
+      </div>
+    );
+  }
+
+  const header = variant === 'header';
   return (
-    <div className={cn('flex gap-2', { 'flex-col sm:flex-row': !compact })}>
-      <Button variant={compact ? 'secondary' : 'primary'} onClick={() => fileInput.current?.click()} className="flex-1">
+    <div className="flex gap-2">
+      <Button variant={header ? 'secondary' : 'primary'} size={header ? 'md' : 'lg'} onClick={() => fileInput.current?.click()}>
         <Icon name="upload" /> Add files
       </Button>
-      <Button onClick={() => folderInput.current?.click()} className="flex-1">
+      <Button size={header ? 'md' : 'lg'} onClick={() => folderInput.current?.click()} className={cn({ 'max-sm:hidden': !header })}>
         <Icon name="folder" /> Add folder
       </Button>
-      <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={handleChange} aria-label="Choose image files" />
-      <input ref={folderInput} type="file" multiple hidden onChange={handleChange} aria-label="Choose a folder of images" />
+      {inputs}
     </div>
   );
 };
 
-/** The big empty-state drop zone. Clicking or pressing Enter opens the file picker. */
-export const EmptyDropZone = () => {
-  const { addFiles } = useApp();
-  const input = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className="flex h-full min-h-80 items-center justify-center p-4 sm:p-8">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="Add images: drop, paste, or press Enter to pick files"
-        onClick={() => input.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key !== 'Enter' && event.key !== ' ') return;
-          event.preventDefault();
-          input.current?.click();
-        }}
-        className={cn(
-          'flex w-full max-w-2xl cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-slate-300 px-6 py-16 text-center',
-          'hover:border-sky-400 hover:bg-sky-50/50 dark:border-slate-600 dark:hover:border-sky-500 dark:hover:bg-sky-950/30',
-          focusRing,
-        )}
-      >
-        <Icon name="upload" className="size-10 text-slate-400" />
-        <p className="text-lg font-medium text-slate-800 dark:text-slate-100">Drop, paste, or pick images. Nothing leaves your device.</p>
-        <p className="text-sm text-slate-500 dark:text-slate-400">JPEG, PNG, WebP, AVIF, GIF, BMP · folders work too · Ctrl/Cmd+V to paste an image or URL</p>
-        <input
-          ref={input}
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          aria-label="Choose image files"
-          onChange={async (event) => {
-            const files = Array.from(event.currentTarget.files ?? []);
-            event.currentTarget.value = '';
-            if (files.length > 0) await addFiles(files);
-          }}
-        />
+/** The empty state: the whole stage is the drop zone, framed by breathing crop corners. */
+export const EmptyDropZone = () => (
+  <div className="relative flex min-h-[56vh] flex-1 items-center overflow-hidden rounded-lg bg-sunken bg-[radial-gradient(var(--color-dot)_1px,transparent_1px)] bg-size-[16px_16px] max-lg:rounded-none">
+    <CropCorners motion="breathe" inset={24} />
+    <div className="mx-auto w-full max-w-xl px-10 py-16 max-lg:px-8">
+      <h2 className="text-[52px] leading-[1.02] font-[650] tracking-[-.035em] max-lg:text-[38px]">
+        Drop, paste, or pick images.
+        <br />
+        <span className="text-ink-3">Nothing leaves your device.</span>
+      </h2>
+      <div className="mt-8 flex flex-wrap items-center gap-2">
+        <FilePickers variant="hero" />
+        <UrlInput variant="hero" />
       </div>
+      <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-3">
+        <span className="flex items-center gap-1.5 max-lg:hidden">
+          <Keycap>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl V'}</Keycap> paste an image or URL
+        </span>
+        <span>Folders work too</span>
+        <span className="font-mono">{SUPPORTED_FORMAT_LABELS.join(' · ')}</span>
+      </p>
     </div>
-  );
-};
+  </div>
+);

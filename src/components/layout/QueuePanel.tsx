@@ -4,114 +4,176 @@ import { formatBytes } from '../../lib/format';
 import { findPreset } from '../../lib/presets';
 import type { QueueItem } from '../../lib/types';
 import { useApp } from '../../state/AppContext';
-import { FilePickers } from '../input/DropZone';
-import { UrlInput } from '../input/UrlInput';
-import { Button, focusRing } from '../ui/Button';
-import { Icon } from '../ui/Icon';
+import { Button, focusRing, Keycap } from '../ui/Button';
+import { Icon, Spinner } from '../ui/Icon';
 
-const THUMB_SIZE = 44;
-
-const Thumbnail = ({ bitmap }: { bitmap: ImageBitmap }) => {
+const Thumbnail = ({ bitmap, width, height }: { bitmap: ImageBitmap; width: number; height: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
     const ratio = window.devicePixelRatio || 1;
-    const scale = Math.min((THUMB_SIZE * ratio) / bitmap.width, (THUMB_SIZE * ratio) / bitmap.height);
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    // Cover the thumbnail box, like object-fit: cover.
+    const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
+    const drawWidth = bitmap.width * scale;
+    const drawHeight = bitmap.height * scale;
     context.imageSmoothingQuality = 'high';
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  }, [bitmap]);
-  return <canvas ref={canvasRef} aria-hidden="true" className="max-h-11 max-w-11 rounded-sm" />;
+    context.drawImage(bitmap, (canvas.width - drawWidth) / 2, (canvas.height - drawHeight) / 2, drawWidth, drawHeight);
+  }, [bitmap, width, height]);
+  return <canvas ref={canvasRef} aria-hidden="true" className="shrink-0 rounded-sm bg-sunken" style={{ width, height }} />;
 };
 
-const STATUS_LABEL: Record<QueueItem['status'], string> = {
-  idle: 'Waiting',
-  encoding: 'Encoding…',
-  ready: 'Ready',
-  error: 'Error',
-};
-
+/** Size, or what the item is waiting for. Used as visible status and in the accessible name. */
 const statusText = (item: QueueItem): string => {
-  if (item.status === 'error') return item.error ?? 'Error';
+  if (item.status === 'error') return `Error · ${item.error ?? 'unknown'}`;
   if (item.output && item.outputRevision === item.revision) return formatBytes(item.output.blob.size);
-  if (item.output) return `${formatBytes(item.output.blob.size)} (outdated)`;
-  return STATUS_LABEL[item.status];
+  if (item.status === 'encoding') return 'Encoding';
+  if (item.output) return `${formatBytes(item.output.blob.size)}, outdated`;
+  return 'Waiting';
+};
+
+const Status = ({ item }: { item: QueueItem }) => {
+  if (item.status === 'error') return <span className="truncate text-danger">Error · {item.error ?? 'unknown'}</span>;
+  const current = item.output && item.outputRevision === item.revision;
+  if (current && item.output) return <span className="font-mono">{formatBytes(item.output.blob.size)}</span>;
+  if (item.status === 'encoding')
+    return (
+      <span className="flex items-center gap-1.5">
+        <Spinner className="size-2.5" /> Encoding
+      </span>
+    );
+  if (item.output)
+    return (
+      <span className="flex items-center gap-1.5">
+        <s className="font-mono">{formatBytes(item.output.blob.size)}</s> Outdated
+      </span>
+    );
+  return <span>Waiting</span>;
 };
 
 export const QueuePanel = () => {
   const { state, dispatch, removeItem, selectedItem } = useApp();
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Keep the selected image in view when N/P moves through a long queue.
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [state.selectedId]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <FilePickers compact />
-      <UrlInput />
-
-      {state.items.length > 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-1 flex items-center justify-between">
-            <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase dark:text-slate-400">
-              Images ({state.items.length})
-            </h2>
-            <span className="text-[11px] text-slate-400">
-              <kbd>N</kbd>/<kbd>P</kbd> next/prev
-            </span>
-          </div>
-          {state.items.length > 1 && selectedItem ? (
-            <Button
-              size="sm"
-              className="mb-1"
-              onClick={() => {
-                dispatch({ type: 'applyPresetToAll', presetId: selectedItem.presetId });
-                dispatch({ type: 'announce', message: `Applied ${findPreset(state.presets, selectedItem.presetId).name} to all images.` });
-              }}
-            >
-              Apply “{findPreset(state.presets, selectedItem.presetId).name}” to all
-            </Button>
-          ) : null}
-          <ul aria-label="Image queue" className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1 py-1">
-            {state.items.map((item, index) => {
-              const selected = item.id === state.selectedId;
-              return (
-                <li key={item.id} className="group flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-current={selected ? 'true' : undefined}
-                    aria-label={`${index + 1}. ${item.sourceName}, ${statusText(item)}`}
-                    onClick={() => dispatch({ type: 'selectItem', id: item.id })}
-                    className={cn('flex min-w-0 flex-1 items-center gap-2 rounded-md p-1.5 text-left', focusRing, {
-                      'bg-sky-100 dark:bg-sky-900/50': selected,
-                      'hover:bg-slate-100 dark:hover:bg-slate-800': !selected,
-                    })}
-                  >
-                    <span className="flex size-11 shrink-0 items-center justify-center">
-                      <Thumbnail bitmap={item.editedBitmap ?? item.sourceBitmap} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{item.sourceName}</span>
-                      <span
-                        className={cn('block truncate text-xs tabular-nums', {
-                          'text-red-600 dark:text-red-400': item.status === 'error',
-                          'text-slate-500 dark:text-slate-400': item.status !== 'error',
-                        })}
-                      >
-                        {statusText(item)}
-                      </span>
-                    </span>
-                  </button>
-                  <Button size="sm" variant="ghost" aria-label={`Remove ${item.sourceName}`} onClick={() => removeItem(item.id)}>
-                    <Icon name="close" />
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-11 shrink-0 items-center justify-between px-4">
+        <h2 className="text-xs font-semibold text-ink-3">
+          Images <span className="font-mono text-ink">{state.items.length}</span>
+        </h2>
+        <span className="flex items-center gap-1" title="Previous / next image">
+          <Keycap>P</Keycap>
+          <Keycap>N</Keycap>
+        </span>
+      </div>
+      <ul ref={listRef} aria-label="Image queue" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+        {state.items.map((item, index) => {
+          const selected = item.id === state.selectedId;
+          return (
+            <li key={item.id} className="group relative">
+              <button
+                type="button"
+                aria-current={selected ? 'true' : undefined}
+                aria-label={`${index + 1}. ${item.sourceName}, ${statusText(item)}`}
+                onClick={() => dispatch({ type: 'selectItem', id: item.id })}
+                className={cn('flex w-full min-w-0 items-center gap-2.5 rounded-md p-2 pr-8 text-left', focusRing, {
+                  'bg-raised ring-1 ring-line-strong ring-inset': selected,
+                  'hover:bg-sunken/60': !selected,
+                })}
+              >
+                <Thumbnail bitmap={item.editedBitmap ?? item.sourceBitmap} width={44} height={32} />
+                <span className="min-w-0 flex-1">
+                  <span className={cn('block truncate', { 'font-semibold': selected })}>{item.sourceName}</span>
+                  <span className="flex text-xs text-ink-3">
+                    <Status item={item} />
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${item.sourceName}`}
+                onClick={() => removeItem(item.id)}
+                className={cn(
+                  'absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded text-ink-3 hover:bg-sunken hover:text-ink',
+                  'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
+                  { 'opacity-100': selected },
+                  focusRing,
+                )}
+              >
+                <Icon name="close" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {state.items.length > 1 && selectedItem ? (
+        <div className="shrink-0 border-t border-line p-2">
+          <Button
+            className="w-full"
+            onClick={() => {
+              dispatch({ type: 'applyPresetToAll', presetId: selectedItem.presetId });
+              dispatch({ type: 'announce', message: `Applied ${findPreset(state.presets, selectedItem.presetId).name} to all images.` });
+            }}
+          >
+            <span className="truncate">Apply “{findPreset(state.presets, selectedItem.presetId).name}” to all</span>
+          </Button>
         </div>
-      ) : (
-        <p className="text-sm text-slate-500 dark:text-slate-400">Drop images or folders anywhere, or paste with Ctrl/Cmd+V.</p>
-      )}
+      ) : null}
     </div>
+  );
+};
+
+/** Mobile: the queue as a horizontally scrolling strip of thumbnails. */
+export const MobileQueueStrip = () => {
+  const { state, dispatch, removeItem } = useApp();
+  if (state.items.length === 0) return null;
+  return (
+    <ul aria-label="Image queue" className="flex shrink-0 gap-3 overflow-x-auto overscroll-x-contain border-b border-line bg-panel px-4 pt-3 pb-2">
+      {state.items.map((item, index) => {
+        const selected = item.id === state.selectedId;
+        return (
+          <li key={item.id} className="relative shrink-0">
+            <button
+              type="button"
+              aria-current={selected ? 'true' : undefined}
+              aria-label={`${index + 1}. ${item.sourceName}, ${statusText(item)}`}
+              onClick={() => dispatch({ type: 'selectItem', id: item.id })}
+              className={cn('block rounded-md p-0.5', focusRing, { 'ring-2 ring-primary': selected, 'opacity-80': !selected })}
+            >
+              <Thumbnail bitmap={item.editedBitmap ?? item.sourceBitmap} width={56} height={44} />
+              {item.status === 'error' ? (
+                <span aria-hidden="true" className="absolute top-1 left-1 size-2 rounded-full bg-danger-solid" />
+              ) : item.status === 'encoding' ? (
+                <span aria-hidden="true" className="absolute top-1 left-1 text-on-primary">
+                  <Spinner className="size-2.5" />
+                </span>
+              ) : null}
+            </button>
+            {selected ? (
+              <button
+                type="button"
+                aria-label={`Remove ${item.sourceName}`}
+                onClick={() => removeItem(item.id)}
+                className={cn(
+                  // The visible dot is 20px; the ::before extends the touch target to 44px.
+                  'absolute -top-1 -right-1 flex size-5 items-center justify-center rounded-full bg-primary text-on-primary before:absolute before:-inset-3',
+                  focusRing,
+                )}
+              >
+                <Icon name="close" className="size-3" />
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 };

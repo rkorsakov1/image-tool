@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { isTextEntryTarget } from '../../hooks/useKeyboardShortcuts';
-import type { MaskHistory } from '../../hooks/useMaskHistory';
 import { useViewTransform } from '../../hooks/useViewTransform';
 import { cn } from '../../lib/cn';
 import { screenToSource, transformedSize, transformedToSource, type Point } from '../../lib/cropMath';
@@ -19,11 +18,18 @@ type MaskEditorProps = {
   transform: Transform;
   /** Source-sized canvas; its alpha channel is the mask. */
   mask: HTMLCanvasElement;
-  /** 'mask': red overlay of what will be filled. 'alpha': the cut-out itself (Restore/Erase). */
+  /** 'mask': tinted overlay of the stroke being painted. 'alpha': the cut-out itself (Restore/Erase). */
   variant: 'mask' | 'alpha';
   brush: BrushSettings;
   onBrushChange: (brush: BrushSettings) => void;
-  history: MaskHistory;
+  /** Change this whenever the mask canvas is modified from outside, so the view redraws. */
+  version: number;
+  /** Called when a stroke ends, with the area it touched (source pixels). The stroke is already in `mask`. */
+  onStrokeEnd: (rect: Rect) => void;
+  /** Ignore painting (e.g. while the previous stroke is being applied). */
+  disabled?: boolean;
+  /** Alpha variant: color shown behind the cut-out instead of the checkerboard. */
+  backdrop?: string | null;
   /** When set, clicks pick a point (eyedropper) instead of painting. */
   onPick?: (point: Point) => void;
   label: string;
@@ -67,7 +73,7 @@ const growRect = (rect: Rect | null, point: Point, radius: number): Rect => {
  * Brush editor over the image, shared by Retouch (fill mask) and Background (alpha refinement).
  * The mask lives at source resolution and is displayed through the same view transform as the crop editor.
  */
-export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, history, onPick, label }: MaskEditorProps) => {
+export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, disabled = false, backdrop = null, onPick, label }: MaskEditorProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const image = useMemo(() => transformedSize(bitmap, transform.rotation), [bitmap, transform.rotation]);
@@ -93,7 +99,7 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
     if (variant === 'mask') {
       drawTransformed(context, mask, transform, view.deviceScale);
       context.globalCompositeOperation = 'source-in';
-      context.fillStyle = 'rgb(239 68 68)';
+      context.fillStyle = getComputedStyle(overlay).getPropertyValue('--color-accent').trim() || '#3d5fd9';
       context.fillRect(0, 0, width, height);
     } else {
       drawTransformed(context, bitmap, transform, view.deviceScale);
@@ -109,29 +115,18 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
 
   useEffect(() => {
     redraw();
-  }, [redraw, history.version]);
+  }, [redraw, version]);
 
   useEffect(() => () => {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
   }, []);
 
-  // Brush and history shortcuts while this editor is on screen.
+  // Brush shortcuts while this editor is on screen. Undo/redo is global (see state/history).
   useEffect(() => {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (isTextEntryTarget(event.target) || document.querySelector('dialog[open]')) return;
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
-      if (modifier && key === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) history.redo();
-        else history.undo();
-        return;
-      }
-      if (modifier && key === 'y') {
-        event.preventDefault();
-        history.redo();
-        return;
-      }
       if (modifier || event.altKey) return;
       if (event.key === '[' || event.key === ']') {
         event.preventDefault();
@@ -143,7 +138,7 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [brush, onBrushChange, history]);
+  }, [brush, onBrushChange]);
 
   const toSourcePoint = (clientX: number, clientY: number): Point | null => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -169,8 +164,7 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
   };
 
   const startStroke = (point: Point, pointerId: number) => {
-    if (!maskContext) return;
-    history.begin();
+    if (!maskContext || disabled) return;
     stamp(maskContext, point, brush);
     stroke.current = { pointerId, last: point, rect: growRect(null, point, brush.size / 2 + 1) };
     scheduleRedraw();
@@ -179,7 +173,7 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
   const endStroke = () => {
     const current = stroke.current;
     stroke.current = null;
-    if (current?.rect) history.commit(current.rect);
+    if (current?.rect) onStrokeEnd(current.rect);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -255,9 +249,11 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
       onPointerLeave={() => setCursor(null)}
       onKeyDown={handleKeyDown}
       onBlur={() => setKeyboardCursor(null)}
-      className={cn('relative h-full min-h-72 w-full touch-none overflow-hidden select-none', focusRing, {
+      aria-busy={disabled}
+      className={cn('absolute inset-0 touch-none overflow-hidden select-none', focusRing, '-outline-offset-2', {
         'cursor-crosshair': Boolean(onPick),
-        'cursor-none': !onPick,
+        'cursor-none': !onPick && !disabled,
+        'cursor-progress': disabled && !onPick,
       })}
     >
       {view ? (
@@ -265,11 +261,13 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
           {variant === 'alpha' ? (
             <div
               aria-hidden="true"
-              className={cn('absolute', checkerboardClass)}
-              style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }}
+              className={cn('absolute', { [checkerboardClass]: !backdrop })}
+              // The backdrop is a user-chosen runtime color, so it can't be a Tailwind class.
+              style={{ left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight, backgroundColor: backdrop ?? undefined }}
             />
           ) : null}
-          <ImageCanvas bitmap={bitmap} transform={transform} view={view} className={cn({ 'opacity-20': variant === 'alpha' })} />
+          {/* In alpha mode a faint ghost of the removed area helps aim the Restore brush. */}
+          <ImageCanvas bitmap={bitmap} transform={transform} view={view} className={cn({ 'opacity-15': variant === 'alpha' })} />
           <canvas
             ref={overlayRef}
             aria-hidden="true"
@@ -279,17 +277,17 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
           {cursor && !onPick ? (
             <div
               aria-hidden="true"
-              className={cn('pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-[0_0_0_1px_rgb(0_0_0/0.5)]', {
-                'border-white': !brush.erase,
-                'border-dashed border-amber-300': brush.erase,
-              })}
+              className={cn(
+                'pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white shadow-[0_0_0_1px_rgb(0_0_0/0.45),inset_0_0_0_1px_rgb(0_0_0/0.45)]',
+                { 'border-dashed': brush.erase, 'opacity-40': disabled },
+              )}
               style={{ left: cursor.x, top: cursor.y, width: cursorSize, height: cursorSize }}
             />
           ) : null}
           {keyboardScreen ? (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-sky-400"
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-accent"
               style={{ left: keyboardScreen.x, top: keyboardScreen.y, width: Math.max(8, cursorSize), height: Math.max(8, cursorSize) }}
             />
           ) : null}
