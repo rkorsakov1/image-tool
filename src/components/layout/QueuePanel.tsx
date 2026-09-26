@@ -6,6 +6,8 @@ import type { QueueItem } from '../../lib/types';
 import { useApp } from '../../state/AppContext';
 import { Button, focusRing, Keycap } from '../ui/Button';
 import { Icon, Spinner } from '../ui/Icon';
+import { messages, presetLabel, translateError } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 const Thumbnail = ({ bitmap, width, height }: { bitmap: ImageBitmap; width: number; height: number }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,34 +30,37 @@ const Thumbnail = ({ bitmap, width, height }: { bitmap: ImageBitmap; width: numb
 
 /** Size, or what the item is waiting for. Used as visible status and in the accessible name. */
 const statusText = (item: QueueItem): string => {
-  if (item.status === 'error') return `Error · ${item.error ?? 'unknown'}`;
+  const q = messages().queue;
+  if (item.status === 'error') return q.error(item.error ? translateError(item.error) : q.unknownError);
   if (item.output && item.outputRevision === item.revision) return formatBytes(item.output.blob.size);
-  if (item.status === 'encoding') return 'Encoding';
-  if (item.output) return `${formatBytes(item.output.blob.size)}, outdated`;
-  return 'Waiting';
+  if (item.status === 'encoding') return q.encoding;
+  if (item.output) return q.outdatedSize(formatBytes(item.output.blob.size));
+  return q.waiting;
 };
 
 const Status = ({ item }: { item: QueueItem }) => {
-  if (item.status === 'error') return <span className="truncate text-danger">Error · {item.error ?? 'unknown'}</span>;
+  const t = useT();
+  if (item.status === 'error') return <span className="truncate text-danger">{t.queue.error(item.error ? translateError(item.error) : t.queue.unknownError)}</span>;
   const current = item.output && item.outputRevision === item.revision;
   if (current && item.output) return <span className="font-mono">{formatBytes(item.output.blob.size)}</span>;
   if (item.status === 'encoding')
     return (
       <span className="flex items-center gap-1.5">
-        <Spinner className="size-2.5" /> Encoding
+        <Spinner className="size-2.5" /> {t.queue.encoding}
       </span>
     );
   if (item.output)
     return (
       <span className="flex items-center gap-1.5">
-        <s className="font-mono">{formatBytes(item.output.blob.size)}</s> Outdated
+        <s className="font-mono">{formatBytes(item.output.blob.size)}</s> {t.queue.outdated}
       </span>
     );
-  return <span>Waiting</span>;
+  return <span>{t.queue.waiting}</span>;
 };
 
 export const QueuePanel = () => {
   const { state, dispatch, removeItem, selectedItem } = useApp();
+  const t = useT();
   const listRef = useRef<HTMLUListElement>(null);
 
   // Keep the selected image in view when N/P moves through a long queue.
@@ -67,14 +72,14 @@ export const QueuePanel = () => {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-11 shrink-0 items-center justify-between px-4">
         <h2 className="text-xs font-semibold text-ink-3">
-          Images <span className="font-mono text-ink">{state.items.length}</span>
+          {t.queue.title} <span className="font-mono text-ink">{state.items.length}</span>
         </h2>
-        <span className="flex items-center gap-1" title="Previous / next image">
+        <span className="flex items-center gap-1" title={t.queue.previousNext}>
           <Keycap>P</Keycap>
           <Keycap>N</Keycap>
         </span>
       </div>
-      <ul ref={listRef} aria-label="Image queue" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+      <ul ref={listRef} aria-label={t.queue.list} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
         {state.items.map((item, index) => {
           const selected = item.id === state.selectedId;
           return (
@@ -99,7 +104,7 @@ export const QueuePanel = () => {
               </button>
               <button
                 type="button"
-                aria-label={`Remove ${item.sourceName}`}
+                aria-label={t.queue.remove(item.sourceName)}
                 onClick={() => removeItem(item.id)}
                 className={cn(
                   'absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded text-ink-3 hover:bg-sunken hover:text-ink',
@@ -120,10 +125,10 @@ export const QueuePanel = () => {
             className="w-full"
             onClick={() => {
               dispatch({ type: 'applyPresetToAll', presetId: selectedItem.presetId });
-              dispatch({ type: 'announce', message: `Applied ${findPreset(state.presets, selectedItem.presetId).name} to all images.` });
+              dispatch({ type: 'announce', message: t.queue.appliedToAll(presetLabel(findPreset(state.presets, selectedItem.presetId))) });
             }}
           >
-            <span className="truncate">Apply “{findPreset(state.presets, selectedItem.presetId).name}” to all</span>
+            <span className="truncate">{t.queue.applyToAll(presetLabel(findPreset(state.presets, selectedItem.presetId)))}</span>
           </Button>
         </div>
       ) : null}
@@ -134,9 +139,10 @@ export const QueuePanel = () => {
 /** Mobile: the queue as a horizontally scrolling strip of thumbnails. */
 export const MobileQueueStrip = () => {
   const { state, dispatch, removeItem } = useApp();
+  const t = useT();
   if (state.items.length === 0) return null;
   return (
-    <ul aria-label="Image queue" className="flex shrink-0 gap-3 overflow-x-auto overscroll-x-contain border-b border-line bg-panel px-4 pt-3 pb-2">
+    <ul aria-label={t.queue.list} className="flex shrink-0 gap-3 overflow-x-auto overscroll-x-contain border-b border-line bg-panel px-4 pt-3 pb-2">
       {state.items.map((item, index) => {
         const selected = item.id === state.selectedId;
         return (
@@ -160,7 +166,7 @@ export const MobileQueueStrip = () => {
             {selected ? (
               <button
                 type="button"
-                aria-label={`Remove ${item.sourceName}`}
+                aria-label={t.queue.remove(item.sourceName)}
                 onClick={() => removeItem(item.id)}
                 className={cn(
                   // The visible dot is 20px; the ::before extends the touch target to 44px.

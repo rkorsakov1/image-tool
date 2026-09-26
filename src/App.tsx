@@ -5,7 +5,7 @@ import { Notices } from './components/layout/Notices';
 import { MobileQueueStrip, QueuePanel } from './components/layout/QueuePanel';
 import { MobileDownloadBar, OutputDock, SettingsForm, useCopyOutput } from './components/layout/SettingsPanel';
 import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
-import { ThemeToggle, useApplyTheme } from './components/layout/ThemeToggle';
+import { LanguageToggle, ThemeToggle, useApplyTheme } from './components/layout/ThemeToggle';
 import { FilePickers, WindowDropTarget } from './components/input/DropZone';
 import { PasteListener } from './components/input/PasteListener';
 import { UrlInput } from './components/input/UrlInput';
@@ -19,20 +19,26 @@ import { useKeyboardInset } from './hooks/useScrollLock';
 import { cn } from './lib/cn';
 import { consumeLaunchedFiles, registerServiceWorker } from './pwa/registerServiceWorker';
 import { AppProvider, useApp } from './state/AppContext';
+import { messages } from './i18n';
 import { useHistoryShortcuts } from './state/history';
+import { useT } from './i18n/useT';
 
-const PrivacyPill = ({ iconOnly }: { iconOnly: boolean }) => (
-  <span
-    className={cn('flex h-6.5 shrink-0 items-center gap-1.5 rounded-full bg-success-bg text-xs font-medium text-success', iconOnly ? 'w-6.5 justify-center' : 'pr-2.5 pl-2')}
-    title="On-device · nothing is uploaded"
-  >
-    <Icon name="lock" className="size-3.5" strokeWidth={1.8} />
-    <span className={iconOnly ? 'sr-only' : undefined}>On-device · nothing is uploaded</span>
-  </span>
-);
+const PrivacyPill = ({ iconOnly }: { iconOnly: boolean }) => {
+  const t = useT();
+  return (
+    <span
+      className={cn('flex h-6.5 shrink-0 items-center gap-1.5 rounded-full bg-success-bg text-xs font-medium text-success', iconOnly ? 'w-6.5 justify-center' : 'pr-2.5 pl-2')}
+      title={t.app.privacy}
+    >
+      <Icon name="lock" className="size-3.5" strokeWidth={1.8} />
+      <span className={iconOnly ? 'sr-only' : undefined}>{t.app.privacy}</span>
+    </span>
+  );
+};
 
 const Shell = () => {
   const { state, dispatch, selectedItem, downloadItem, addFiles, notify } = useApp();
+  const t = useT();
   const reference = useDebouncedEncode();
   const desktop = useIsDesktop();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -42,7 +48,7 @@ const Shell = () => {
   useApplyTheme(state.prefs.theme);
 
   useEffect(() => {
-    registerServiceWorker((activate) => notify('info', 'A new version of LocalCrop is available.', { label: 'Reload', run: activate }, true));
+    registerServiceWorker((activate) => notify('info', messages().app.newVersion, { label: messages().app.reload, run: activate }, true));
     consumeLaunchedFiles((files) => void addFiles(files));
   }, [addFiles, notify]);
 
@@ -82,7 +88,10 @@ const Shell = () => {
             <FilePickers variant={desktop ? 'header' : 'icons'} />
           </div>
         ) : null}
-        <ThemeToggle />
+        <div className="flex items-center">
+          <LanguageToggle />
+          <ThemeToggle />
+        </div>
       </header>
 
       {desktop ? (
@@ -93,14 +102,14 @@ const Shell = () => {
           })}
         >
           {hasItems ? (
-            <section aria-label="Images" className="flex min-h-0 flex-col border-r border-line bg-panel">
+            <section aria-label={t.app.images} className="flex min-h-0 flex-col border-r border-line bg-panel">
               <QueuePanel />
             </section>
           ) : null}
-          <section aria-label="Editor" className="flex min-h-0 min-w-0 flex-col">
+          <section aria-label={t.app.editor} className="flex min-h-0 min-w-0 flex-col">
             <CanvasArea reference={reference} />
           </section>
-          <section aria-label="Output settings" className="flex min-h-0 flex-col border-l border-line bg-panel">
+          <section aria-label={t.app.outputSettings} className="flex min-h-0 flex-col border-l border-line bg-panel">
             <div className={cn('min-h-0 flex-1 overflow-y-auto p-4', { 'pointer-events-none opacity-45': !hasItems })} inert={!hasItems}>
               <SettingsForm />
             </div>
@@ -112,11 +121,11 @@ const Shell = () => {
       ) : (
         <main className="flex flex-1 flex-col">
           {hasItems ? <MobileQueueStrip /> : null}
-          <section aria-label="Editor" className="flex min-w-0 flex-1 flex-col">
+          <section aria-label={t.app.editor} className="flex min-w-0 flex-1 flex-col">
             <CanvasArea reference={reference} />
           </section>
           {selectedItem ? <MobileDownloadBar onOpenSettings={() => setSettingsOpen(true)} /> : null}
-          <Dialog open={settingsOpen && selectedItem !== null} onClose={() => setSettingsOpen(false)} title="Settings" sheet>
+          <Dialog open={settingsOpen && selectedItem !== null} onClose={() => setSettingsOpen(false)} title={t.app.settings} sheet>
             <div className="space-y-5">
               <SettingsForm />
               <div className="border-t border-line pt-4">

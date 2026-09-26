@@ -9,30 +9,85 @@
   "background_color": "#f3f3f1",
   "theme_color": "#fafaf9",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "file_handlers": [
     {
       "action": "./",
       "accept": {
-        "image/jpeg": [".jpg", ".jpeg", ".jfif"],
-        "image/png": [".png"],
-        "image/webp": [".webp"],
-        "image/avif": [".avif"],
-        "image/gif": [".gif"],
-        "image/bmp": [".bmp"],
-        "image/heic": [".heic"],
-        "image/heif": [".heif"],
-        "image/tiff": [".tif", ".tiff"],
-        "image/svg+xml": [".svg"],
-        "image/x-icon": [".ico"],
-        "image/x-tga": [".tga"],
-        "image/x-portable-anymap": [".pnm", ".pbm", ".pgm", ".ppm"],
-        "image/qoi": [".qoi"]
+        "image/jpeg": [
+          ".jpg",
+          ".jpeg",
+          ".jfif"
+        ],
+        "image/png": [
+          ".png"
+        ],
+        "image/webp": [
+          ".webp"
+        ],
+        "image/avif": [
+          ".avif"
+        ],
+        "image/gif": [
+          ".gif"
+        ],
+        "image/bmp": [
+          ".bmp"
+        ],
+        "image/heic": [
+          ".heic"
+        ],
+        "image/heif": [
+          ".heif"
+        ],
+        "image/tiff": [
+          ".tif",
+          ".tiff"
+        ],
+        "image/svg+xml": [
+          ".svg"
+        ],
+        "image/x-icon": [
+          ".ico"
+        ],
+        "image/x-tga": [
+          ".tga"
+        ],
+        "image/x-portable-anymap": [
+          ".pnm",
+          ".pbm",
+          ".pgm",
+          ".ppm"
+        ],
+        "image/qoi": [
+          ".qoi"
+        ]
       },
       "launch_type": "single-client"
     }
+  ],
+  "lang": "en",
+  "categories": [
+    "photo",
+    "productivity",
+    "utilities"
   ]
 }

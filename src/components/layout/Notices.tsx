@@ -7,19 +7,21 @@ import { useApp } from '../../state/AppContext';
 import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
 import { TOAST_ANCHOR_ID } from './SettingsPanel';
+import { useT } from '../../i18n/useT';
 
 const AUTO_DISMISS_MS = 6000;
 
-const KIND: Record<Notice['tone'], { title: string; icon: IconName; badge: string }> = {
-  success: { title: 'Done', icon: 'check', badge: 'bg-success-bg text-success' },
-  info: { title: 'Note', icon: 'info', badge: 'bg-sunken text-ink-2' },
-  warning: { title: 'Warning', icon: 'warn', badge: 'bg-warning-bg text-warning' },
-  error: { title: 'Error', icon: 'warn', badge: 'bg-danger-bg text-danger' },
+const KIND: Record<Notice['tone'], { icon: IconName; badge: string }> = {
+  success: { icon: 'check', badge: 'bg-success-bg text-success' },
+  info: { icon: 'info', badge: 'bg-sunken text-ink-2' },
+  warning: { icon: 'warn', badge: 'bg-warning-bg text-warning' },
+  error: { icon: 'warn', badge: 'bg-danger-bg text-danger' },
 };
 
 /** Toast-style notices plus the polite live region every status update goes through. */
 export const Notices = () => {
   const { state, dispatch } = useApp();
+  const t = useT();
 
   useEffect(() => {
     const timers = state.notices
@@ -64,7 +66,7 @@ export const Notices = () => {
                 <Icon name={kind.icon} className="size-3.5" strokeWidth={1.8} />
               </span>
               <div className="min-w-0 flex-1 pt-0.5">
-                <p className="text-xs font-semibold">{kind.title}</p>
+                <p className="text-xs font-semibold">{t.notices[notice.tone]}</p>
                 <p className="text-[13px] break-words text-ink-2">{notice.message}</p>
                 {notice.action ? (
                   <Button
@@ -82,7 +84,7 @@ export const Notices = () => {
               </div>
               <button
                 type="button"
-                aria-label="Dismiss"
+                aria-label={t.app.dismiss}
                 onClick={() => dispatch({ type: 'dismissNotice', id: notice.id })}
                 className="-m-1 flex size-7 shrink-0 items-center justify-center rounded text-ink-3 hover:bg-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-accent max-lg:size-10"
               >

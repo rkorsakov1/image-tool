@@ -2,6 +2,7 @@ import { useId } from 'react';
 import { cn } from '../../lib/cn';
 import { Button, focusRing, Keycap, Segmented } from '../ui/Button';
 import { MAX_BRUSH, MIN_BRUSH, type BrushSettings } from './MaskEditor';
+import { useT } from '../../i18n/useT';
 
 type BrushToolbarProps = {
   brush: BrushSettings;
@@ -19,10 +20,11 @@ const fromSlider = (value: number) => Math.round(MIN_BRUSH * (MAX_BRUSH / MIN_BR
 /** Brush size, paint/erase and soft edge. Shared by Retouch and Background modes. */
 export const BrushToolbar = ({ brush, onChange, paintLabel, eraseLabel, eraseDisabled = false }: BrushToolbarProps) => {
   const id = useId();
+  const t = useT();
   return (
     <>
       <label htmlFor={id} className="mr-1 text-xs text-ink-2">
-        Brush
+        {t.brush.brush}
       </label>
       <input
         id={id}
@@ -30,14 +32,14 @@ export const BrushToolbar = ({ brush, onChange, paintLabel, eraseLabel, eraseDis
         min={0}
         max={100}
         value={toSlider(brush.size)}
-        aria-valuetext={`${brush.size} pixels`}
+        aria-valuetext={t.brush.pixels(brush.size)}
         aria-keyshortcuts="[ ]"
         onChange={(event) => onChange({ ...brush, size: fromSlider(Number(event.target.value)) })}
         className={cn('h-5 w-24 shrink-0 accent-primary max-lg:h-8', focusRing)}
       />
       <span className="w-14 shrink-0 text-right font-mono text-xs text-ink-2">{brush.size} px</span>
       <Segmented<'paint' | 'erase'>
-        label="Brush mode (X)"
+        label={t.brush.mode}
         className="ml-2"
         value={brush.erase && !eraseDisabled ? 'erase' : 'paint'}
         onChange={(mode) => onChange({ ...brush, erase: mode === 'erase' })}
@@ -61,7 +63,7 @@ export const BrushToolbar = ({ brush, onChange, paintLabel, eraseLabel, eraseDis
         ]}
       />
       <Button variant="ghost" size="sm" pressed={brush.soft} onClick={() => onChange({ ...brush, soft: !brush.soft })} className="ml-1">
-        Soft edge
+        {t.brush.softEdge}
       </Button>
     </>
   );

@@ -1,5 +1,6 @@
 import { DEFAULT_FILENAME_TEMPLATE } from './filenameTemplate';
 import { isBuiltinPreset, uniquePresetName } from './presets';
+import { messages } from '../i18n';
 import type { FitMode, OutputFormat, Preset, PresetFile } from './types';
 
 export const CURRENT_SCHEMA_VERSION = 1;
@@ -199,10 +200,6 @@ export const mergePresets = (
   return { presets: result, summary };
 };
 
-export const describeMergeSummary = (summary: MergeSummary, rejected: number): string => {
-  const parts = [`${summary.added} new`];
-  if (summary.renamed > 0) parts.push(`${summary.renamed} name conflict${summary.renamed === 1 ? '' : 's'} → renamed`);
-  if (summary.unchanged > 0) parts.push(`${summary.unchanged} already present`);
-  if (rejected > 0) parts.push(`${rejected} invalid, skipped`);
-  return parts.join(', ');
-};
+/** "2 new, 1 name conflict → renamed", in the current UI language. */
+export const describeMergeSummary = (summary: MergeSummary, rejected: number): string =>
+  messages().presets.merged(summary.added, summary.renamed, summary.unchanged, rejected);

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import { renderFilename } from '../lib/filenameTemplate';
+import { errorText, messages, presetLabel, setLanguage, syncLanguagePath, translateError } from '../i18n';
 import { formatBytes, formatSavings } from '../lib/format';
 import type { Cutout, EncodedOutput, QueueItem } from '../lib/types';
 import { createWorkerClient, type Processor } from '../worker/workerClient';
@@ -61,6 +62,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const editor = useMemo(() => createWorkerClient('editor'), []);
   const stateRef = useRef(state);
   stateRef.current = state;
+  // Set during render, so every formatter below the provider uses this render's language.
+  setLanguage(state.prefs.language);
+  useEffect(() => syncLanguagePath(state.prefs.language), [state.prefs.language]);
 
   useEffect(() => {
     const saved = savePersistedState({ presets: state.presets, lastPresetId: state.lastPresetId, prefs: state.prefs });
@@ -98,7 +102,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           try {
             return await decodeImage(blob, name);
           } catch (error) {
-            failures.push({ name, message: error instanceof Error ? error.message : String(error) });
+            failures.push({ name, message: errorText(error) });
             return null;
           }
         }),
@@ -108,7 +112,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (!image) return [];
         if (image.bitmap.width * image.bitmap.height > LARGE_IMAGE_PIXELS) {
           const megapixels = Math.round((image.bitmap.width * image.bitmap.height) / 1_000_000);
-          notify('warning', `${image.name} is ${megapixels} MP. Very large images may hit browser memory limits.`);
+          notify('warning', messages().queue.large(image.name, megapixels));
         }
         return [
           { id: crypto.randomUUID(), sourceName: image.name, sourceBytes: image.bytes, sourceType: image.type, sourceBitmap: image.bitmap },
@@ -116,9 +120,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
 
       dispatch({ type: 'addItems', items });
-      for (const failure of failures) notify('error', `${failure.name}: ${failure.message}`);
+      for (const failure of failures) notify('error', `${failure.name}: ${translateError(failure.message)}`);
       if (items.length > 0) {
-        dispatch({ type: 'announce', message: `Added ${items.length} image${items.length === 1 ? '' : 's'}.` });
+        dispatch({ type: 'announce', message: messages().queue.added(items.length) });
       }
     },
     [notify],
@@ -130,7 +134,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     dispatch({ type: 'removeItem', id });
     dispatch({
       type: 'notify',
-      notice: { id: crypto.randomUUID(), tone: 'info', message: `Removed ${item.sourceName}.`, action: { label: 'Undo', run: () => dispatch({ type: 'undo' }) } },
+      notice: {
+        id: crypto.randomUUID(),
+        tone: 'info',
+        message: messages().queue.removed(item.sourceName),
+        action: { label: messages().history.undo, run: () => dispatch({ type: 'undo' }) },
+        undoesStep: true,
+      },
     });
   }, []);
 
@@ -142,7 +152,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       sourceName: item.sourceName,
       width: output?.width ?? preset.width ?? item.sourceBitmap.width,
       height: output?.height ?? preset.height ?? item.sourceBitmap.height,
-      presetName: preset.name,
+      presetName: presetLabel(preset),
       index: index + 1,
       queueLength: current.items.length,
       format: preset.format,
@@ -156,8 +166,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       triggerDownload(item.output.blob, filename);
       dispatch({ type: 'addSavings', before: item.sourceBytes, after: item.output.blob.size, count: 1 });
       const change = formatSavings(item.sourceBytes, item.output.blob.size);
-      const comparison = change.startsWith('−') ? ` · ${change.slice(1)} smaller` : '';
-      notify('success', `Saved ${filename} · ${formatBytes(item.output.blob.size)}${comparison}`);
+      notify('success', messages().output.saved(filename, formatBytes(item.output.blob.size), change.startsWith('−') ? change.slice(1) : null));
     },
     [outputFilename, notify],
   );

@@ -4,6 +4,8 @@ import { useApp } from '../../state/AppContext';
 import { fetchImageFromUrl, looksLikeUrl } from '../../state/ingest';
 import { Button } from '../ui/Button';
 import { Icon, Spinner } from '../ui/Icon';
+import { errorText, messages } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 /** Fetches a URL and adds the image. Shared by the URL field and the paste listener. */
 export const useUrlLoader = () => {
@@ -12,7 +14,7 @@ export const useUrlLoader = () => {
 
   const load = async (url: string): Promise<boolean> => {
     if (!looksLikeUrl(url)) {
-      notify('error', 'Enter a full http:// or https:// image URL.');
+      notify('error', messages().input.invalidUrl);
       return false;
     }
     setLoading(true);
@@ -21,7 +23,7 @@ export const useUrlLoader = () => {
       await addFiles([{ blob, name }]);
       return true;
     } catch (error) {
-      notify('error', error instanceof Error ? error.message : String(error));
+      notify('error', errorText(error));
       return false;
     } finally {
       setLoading(false);
@@ -33,6 +35,7 @@ export const useUrlLoader = () => {
 
 /** Link icon + URL field; the Fetch button appears once something is typed. */
 export const UrlInput = ({ variant = 'hero' }: { variant?: 'hero' | 'header' }) => {
+  const t = useT();
   const [value, setValue] = useState('');
   const { load, loading } = useUrlLoader();
 
@@ -46,7 +49,7 @@ export const UrlInput = ({ variant = 'hero' }: { variant?: 'hero' | 'header' }) 
   return (
     <form
       onSubmit={handleSubmit}
-      aria-label="Load image from URL"
+      aria-label={t.input.urlForm}
       className={cn(
         'flex items-center gap-2 rounded-md border bg-raised pl-2.5',
         'focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent',
@@ -58,15 +61,15 @@ export const UrlInput = ({ variant = 'hero' }: { variant?: 'hero' | 'header' }) 
         type="url"
         inputMode="url"
         enterKeyHint="go"
-        placeholder={variant === 'header' ? 'Paste an image URL' : 'https:// image URL'}
-        aria-label="Image URL"
+        placeholder={variant === 'header' ? t.input.urlPlaceholderHeader : t.input.urlPlaceholder}
+        aria-label={t.input.url}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-ink-3 max-lg:text-base"
       />
       {showFetch ? (
         <Button type="submit" size="xs" variant="ghost" className="mr-0.5" disabled={loading || value.trim() === ''} aria-busy={loading}>
-          {loading ? <Spinner /> : null} Fetch
+          {loading ? <Spinner /> : null} {t.input.fetch}
         </Button>
       ) : null}
     </form>

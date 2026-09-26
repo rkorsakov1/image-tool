@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useScrollLock } from '../../hooks/useScrollLock';
+import { messages } from '../../i18n';
 import { cn } from '../../lib/cn';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -126,7 +127,7 @@ export const Dialog = ({ open, onClose, title, children, footer, className, shee
             <h2 id={titleId} className="text-base font-semibold">
               {title}
             </h2>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label={messages().app.closeDialog}>
               <Icon name="close" />
             </Button>
           </header>

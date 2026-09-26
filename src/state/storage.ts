@@ -1,5 +1,6 @@
 import { BUILTIN_PRESETS, findPreset } from '../lib/presets';
 import { createPresetFile, validatePresetFile } from '../lib/presetValidation';
+import { initialLanguage } from '../i18n';
 import type { Preset } from '../lib/types';
 import { DEFAULT_PRESET_ID, type Prefs } from './appReducer';
 
@@ -7,7 +8,7 @@ export const STORAGE_KEY = 'localcrop:presets:v1';
 
 export type PersistedState = { presets: Preset[]; lastPresetId: string; prefs: Prefs };
 
-const DEFAULT_PREFS: Prefs = { showThirds: true, theme: 'system', lifetime: { bytes: 0, count: 0 } };
+const DEFAULT_PREFS: Prefs = { showThirds: true, theme: 'system', language: 'en', lifetime: { bytes: 0, count: 0 } };
 
 const readLifetime = (raw: unknown): Prefs['lifetime'] => {
   if (typeof raw !== 'object' || raw === null) return { bytes: 0, count: 0 };
@@ -17,18 +18,19 @@ const readLifetime = (raw: unknown): Prefs['lifetime'] => {
 };
 
 const readPrefs = (raw: unknown): Prefs => {
-  if (typeof raw !== 'object' || raw === null) return DEFAULT_PREFS;
+  if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_PREFS, language: initialLanguage(null) };
   const record = raw as Record<string, unknown>;
   return {
     showThirds: typeof record.showThirds === 'boolean' ? record.showThirds : DEFAULT_PREFS.showThirds,
     theme: record.theme === 'light' || record.theme === 'dark' ? record.theme : 'system',
+    language: initialLanguage(record.language),
     lifetime: readLifetime(record.lifetime),
   };
 };
 
 /** Loads presets and UI preferences, repairing or dropping anything invalid. */
 export const loadPersistedState = (): PersistedState => {
-  const fallback: PersistedState = { presets: [], lastPresetId: DEFAULT_PRESET_ID, prefs: DEFAULT_PREFS };
+  const fallback: PersistedState = { presets: [], lastPresetId: DEFAULT_PRESET_ID, prefs: { ...DEFAULT_PREFS, language: initialLanguage(null) } };
   let text: string | null = null;
   try {
     text = localStorage.getItem(STORAGE_KEY);

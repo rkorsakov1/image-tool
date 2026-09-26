@@ -6,12 +6,15 @@ import { useApp } from '../../state/AppContext';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { describePreset } from './PresetManagerDialog';
+import { translateError } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 const clearHash = () => window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
 
 /** Opening a `#preset=…` link asks before importing the shared presets. */
 export const SharedPresetDialog = () => {
   const { state, dispatch, notify } = useApp();
+  const t = useT();
   const [incoming, setIncoming] = useState<{ presets: Preset[]; rejected: number } | null>(null);
 
   useEffect(() => {
@@ -19,7 +22,7 @@ export const SharedPresetDialog = () => {
       const parsed = parseShareHash(window.location.hash);
       if (!parsed) return;
       if (!parsed.ok) {
-        notify('error', parsed.reason);
+        notify('error', translateError(parsed.reason));
         clearHash();
         return;
       }
@@ -41,27 +44,27 @@ export const SharedPresetDialog = () => {
     <Dialog
       open={incoming !== null}
       onClose={close}
-      title="Import shared preset?"
+      title={t.presets.sharedTitle}
       footer={
         <>
           <Button variant="ghost" onClick={close}>
-            Cancel
+            {t.presets.cancel}
           </Button>
           <Button
             variant="primary"
             onClick={() => {
               if (!merged) return;
               dispatch({ type: 'replacePresets', presets: merged.presets });
-              dispatch({ type: 'announce', message: `Imported presets: ${describeMergeSummary(merged.summary, incoming?.rejected ?? 0)}.` });
+              dispatch({ type: 'announce', message: t.presets.imported(describeMergeSummary(merged.summary, incoming?.rejected ?? 0)) });
               close();
             }}
           >
-            Import
+            {t.presets.importButton}
           </Button>
         </>
       }
     >
-      <p className="mb-3 text-sm">Someone shared these presets with you. They’ll be added to your preset list in this browser.</p>
+      <p className="mb-3 text-sm">{t.presets.sharedText}</p>
       <ul className="space-y-2">
         {incoming?.presets.map((preset) => (
           <li key={preset.id} className="rounded-md border border-line bg-raised p-2">

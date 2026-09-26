@@ -1,6 +1,7 @@
 import { IDENTITY_TRANSFORM } from '../lib/cropMath';
 import { BUILTIN_PRESETS, effectiveOverrides, findPreset, isBuiltinPreset, resolvePreset, uniquePresetName } from '../lib/presets';
 import type { CropRect, Cutout, EncodedOutput, Preset, QueueItem, Transform } from '../lib/types';
+import type { Language } from '../i18n';
 import { EMPTY_HISTORY, type History } from './history';
 
 export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
@@ -8,13 +9,15 @@ export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
 export type Theme = 'system' | 'light' | 'dark';
 
 /** `lifetime`: bytes saved and images exported across all sessions in this browser. */
-export type Prefs = { showThirds: boolean; theme: Theme; lifetime: { bytes: number; count: number } };
+export type Prefs = { showThirds: boolean; theme: Theme; language: Language; lifetime: { bytes: number; count: number } };
 
 export type Notice = {
   id: string;
   tone: 'info' | 'success' | 'warning' | 'error';
   message: string;
   action?: { label: string; run: () => void };
+  /** An "Undo" toast: dismissed once that step is undone. */
+  undoesStep?: boolean;
   /** Stays until dismissed (errors always do). */
   persistent?: boolean;
 };

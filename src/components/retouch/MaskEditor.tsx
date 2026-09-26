@@ -9,6 +9,7 @@ import type { Transform } from '../../lib/types';
 import { ImageCanvas } from '../crop/ImageCanvas';
 import { focusRing } from '../ui/Button';
 import { checkerboardClass } from '../preview/Checkerboard';
+import { useT } from '../../i18n/useT';
 
 export type BrushSettings = { size: number; erase: boolean; soft: boolean };
 
@@ -74,6 +75,7 @@ const growRect = (rect: Rect | null, point: Point, radius: number): Rect => {
  * The mask lives at source resolution and is displayed through the same view transform as the crop editor.
  */
 export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushChange, version, onStrokeEnd, disabled = false, backdrop = null, onPick, label }: MaskEditorProps) => {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const image = useMemo(() => transformedSize(bitmap, transform.rotation), [bitmap, transform.rotation]);
@@ -239,8 +241,8 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
     <div
       ref={containerRef}
       role="application"
-      aria-roledescription="brush canvas"
-      aria-label={`${label}. Drag to paint. Keyboard: arrows move the brush, Space paints, X toggles ${variant === 'alpha' ? 'restore/erase' : 'paint/erase'}, [ and ] change the size, Ctrl+Z undoes.`}
+      aria-roledescription={t.brush.canvasRole}
+      aria-label={t.brush.canvas(label, variant === 'alpha')}
       tabIndex={0}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

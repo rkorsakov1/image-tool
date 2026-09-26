@@ -3,9 +3,10 @@ import type { Theme } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
 import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
+import type { Language } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 const ORDER: Theme[] = ['system', 'light', 'dark'];
-const LABEL: Record<Theme, string> = { system: 'System theme', light: 'Light theme', dark: 'Dark theme' };
 const ICON: Record<Theme, IconName> = { system: 'monitor', light: 'sun', dark: 'moon' };
 /** Browser chrome color per theme; matches --color-panel. */
 const CHROME = { light: '#fafaf9', dark: '#181817' };
@@ -26,6 +27,8 @@ export const useApplyTheme = (theme: Theme): void => {
 /** Cycles System → Light → Dark. */
 export const ThemeToggle = () => {
   const { state, dispatch } = useApp();
+  const t = useT();
+  const LABEL = t.app.theme;
   const theme = state.prefs.theme;
   const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length] as Theme;
   return (
@@ -36,10 +39,29 @@ export const ThemeToggle = () => {
         dispatch({ type: 'setPref', patch: { theme: next } });
         dispatch({ type: 'announce', message: `${LABEL[next]}.` });
       }}
-      aria-label={`${LABEL[theme]}. Switch to ${LABEL[next].toLowerCase()}`}
-      title={`${LABEL[theme]} (click for ${LABEL[next].toLowerCase()})`}
+      aria-label={t.app.themeSwitch(LABEL[theme], LABEL[next])}
+      title={t.app.themeTitle(LABEL[theme], LABEL[next])}
     >
       <Icon name={ICON[theme]} />
+    </Button>
+  );
+};
+
+/** Switches English ↔ Deutsch. Shows the current language; the URL follows (/de/). */
+export const LanguageToggle = () => {
+  const { state, dispatch } = useApp();
+  const t = useT();
+  const next: Language = state.prefs.language === 'de' ? 'en' : 'de';
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => dispatch({ type: 'setPref', patch: { language: next } })}
+      aria-label={t.app.languageSwitch}
+      title={t.meta.switchTo}
+      className="font-mono text-[11px] font-semibold tracking-wide"
+    >
+      <span aria-hidden="true">{t.meta.short}</span>
     </Button>
   );
 };

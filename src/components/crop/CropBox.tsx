@@ -11,6 +11,7 @@ import {
   type ViewTransform,
 } from '../../lib/cropMath';
 import type { CropRect } from '../../lib/types';
+import { useT } from '../../i18n/useT';
 
 type Drag = { pointerId: number; kind: 'move' | Corner; start: Point; startCrop: CropRect; gesture: string };
 
@@ -28,11 +29,11 @@ type CropBoxProps = {
 
 // Each handle is a 44px touch target centered on the corner; inside it, the visible 20px
 // L-bracket sits 3px outside the crop edge.
-const CORNERS: { corner: Corner; label: string; hit: string; bracket: string }[] = [
-  { corner: 'nw', label: 'top-left', hit: '-left-5.5 -top-5.5 cursor-nwse-resize', bracket: 'left-[19px] top-[19px] border-t-4 border-l-4' },
-  { corner: 'ne', label: 'top-right', hit: '-right-5.5 -top-5.5 cursor-nesw-resize', bracket: 'right-[19px] top-[19px] border-t-4 border-r-4' },
-  { corner: 'sw', label: 'bottom-left', hit: '-bottom-5.5 -left-5.5 cursor-nesw-resize', bracket: 'bottom-[19px] left-[19px] border-b-4 border-l-4' },
-  { corner: 'se', label: 'bottom-right', hit: '-bottom-5.5 -right-5.5 cursor-nwse-resize', bracket: 'bottom-[19px] right-[19px] border-b-4 border-r-4' },
+const CORNERS: { corner: Corner; hit: string; bracket: string }[] = [
+  { corner: 'nw', hit: '-left-5.5 -top-5.5 cursor-nwse-resize', bracket: 'left-[19px] top-[19px] border-t-4 border-l-4' },
+  { corner: 'ne', hit: '-right-5.5 -top-5.5 cursor-nesw-resize', bracket: 'right-[19px] top-[19px] border-t-4 border-r-4' },
+  { corner: 'sw', hit: '-bottom-5.5 -left-5.5 cursor-nesw-resize', bracket: 'bottom-[19px] left-[19px] border-b-4 border-l-4' },
+  { corner: 'se', hit: '-bottom-5.5 -right-5.5 cursor-nwse-resize', bracket: 'bottom-[19px] right-[19px] border-b-4 border-r-4' },
 ];
 
 const ARROWS: Record<string, Point> = {
@@ -58,6 +59,7 @@ export const ThirdsOverlay = () => (
 
 /** Movable, resizable crop rectangle. All geometry is in source pixels; `view` maps it to the screen. */
 export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, onChange, onReset }: CropBoxProps) => {
+  const t = useT();
   const drag = useRef<Drag | null>(null);
 
   const toSource = (event: PointerEvent): Point => {
@@ -130,8 +132,8 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
   return (
     <div
       role="group"
-      aria-roledescription="crop area"
-      aria-label={`Crop ${Math.round(crop.width)} by ${Math.round(crop.height)} pixels at ${Math.round(crop.x)}, ${Math.round(crop.y)}. Arrow keys move, Shift for 10 pixels, plus and minus resize, R resets.`}
+      aria-roledescription={t.crop.areaRole}
+      aria-label={t.crop.area(Math.round(crop.width), Math.round(crop.height), Math.round(crop.x), Math.round(crop.y))}
       tabIndex={0}
       onPointerDown={(event) => handlePointerDown(event, 'move')}
       onPointerMove={handlePointerMove}
@@ -146,12 +148,12 @@ export const CropBox = ({ crop, bounds, aspect, view, containerRef, showThirds, 
       style={{ left, top, width, height }}
     >
       {showThirds ? <ThirdsOverlay /> : null}
-      {CORNERS.map(({ corner, label, hit, bracket }) => (
+      {CORNERS.map(({ corner, hit, bracket }) => (
         <div
           key={corner}
           role="button"
-          aria-roledescription="resize handle"
-          aria-label={`Resize crop from the ${label} corner. Arrow keys move this corner.`}
+          aria-roledescription={t.crop.handleRole}
+          aria-label={t.crop.handle(t.crop.corners[corner])}
           tabIndex={0}
           onPointerDown={(event) => handlePointerDown(event, corner)}
           onPointerMove={handlePointerMove}

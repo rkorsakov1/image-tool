@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
+import { headTags, noscriptBlock, SEO } from './src/seo';
 
 const BASE = '/localcrop/';
 
@@ -19,6 +20,7 @@ const fnv1a = (text: string): string => {
 const PUBLIC_PRECACHE = [
   'favicon.svg',
   'theme.js',
+  'og-image.png',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -48,9 +50,36 @@ const serviceWorker = (): Plugin => ({
   },
 });
 
+
+const SEO_HEAD = '<!-- seo:head -->';
+const SEO_NOSCRIPT = '<!-- seo:noscript -->';
+
+/**
+ * Writes the English title/meta/Open Graph/JSON-LD into index.html, and emits a German copy at
+ * de/index.html (same app, German metadata and lang), so both languages have crawlable URLs.
+ */
+const seoPages = (): Plugin => ({
+  name: 'localcrop-seo',
+  enforce: 'post',
+  transformIndexHtml: (html) => html.replace(SEO_HEAD, headTags(SEO.en)).replace(SEO_NOSCRIPT, noscriptBlock(SEO.en)),
+  generateBundle(_options, bundle) {
+    const index = bundle['index.html'];
+    if (!index || index.type !== 'asset') throw new Error('index.html not found in the bundle.');
+    const english = String(index.source);
+    const german = english
+      .replace(headTags(SEO.en), headTags(SEO.de))
+      .replace(noscriptBlock(SEO.en), noscriptBlock(SEO.de))
+      .replace('<html lang="en">', '<html lang="de">')
+      // The page sits one folder deeper; relative links to public/ files move up one level.
+      .replace(/(href|src)="\.\//g, '$1="../');
+    if (german === english) throw new Error('The German page could not be generated.');
+    this.emitFile({ type: 'asset', fileName: 'de/index.html', source: german });
+  },
+});
+
 export default defineConfig({
   base: BASE,
-  plugins: [react(), tailwindcss(), serviceWorker()],
+  plugins: [react(), tailwindcss(), seoPages(), serviceWorker()],
   worker: { format: 'es' },
   build: {
     target: 'es2022',

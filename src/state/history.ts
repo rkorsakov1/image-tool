@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { isTextEntryTarget } from '../hooks/useKeyboardShortcuts';
 import type { Preset, QueueItem } from '../lib/types';
+import { messages } from '../i18n';
 import type { AppAction, AppState } from './appReducer';
 
 /** The parts of an image that editing changes. Outputs and encode status are derived and not kept. */
@@ -145,9 +146,9 @@ export const withHistory =
       return {
         ...restored,
         // An "Undo" button in a toast is spent once the step is undone.
-        notices: restored.notices.filter((notice) => notice.action?.label !== 'Undo'),
+        notices: restored.notices.filter((notice) => !notice.undoesStep),
         history: { past: history.past.slice(0, -1), future: [...history.future, snapshotOf(state)], lastKey: null, lastAt: 0 },
-        announcement: 'Undone.',
+        announcement: messages().history.undone,
       };
     }
     if (action.type === 'redo') {
@@ -157,7 +158,7 @@ export const withHistory =
       return {
         ...restored,
         history: { past: trimPast([...history.past, snapshotOf(state)]), future: history.future.slice(0, -1), lastKey: null, lastAt: 0 },
-        announcement: 'Redone.',
+        announcement: messages().history.redone,
       };
     }
 

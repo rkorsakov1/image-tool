@@ -10,6 +10,8 @@ import { ColorInput } from '../ui/Field';
 import { Icon, Spinner } from '../ui/Icon';
 import { BrushToolbar } from './BrushToolbar';
 import { createMaskCanvas, defaultBrushSize, MaskEditor, readMask, type BrushSettings } from './MaskEditor';
+import { errorText, messages } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 type RGB = [number, number, number];
 
@@ -90,14 +92,18 @@ const strokeRegion = (rect: Rect, image: { width: number; height: number }): Rec
   return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
 };
 
-const METHOD_OPTIONS: { value: FillMethod; label: string; title: string }[] = [
-  { value: 'smooth', label: 'Smooth', title: 'Recreates gradients and soft shadows from the surroundings' },
-  { value: 'flat', label: 'Flat', title: 'Fills with one color' },
-];
+const methodOptions = (): { value: FillMethod; label: string; title: string }[] => {
+  const r = messages().retouch;
+  return [
+    { value: 'smooth', label: r.smooth, title: r.smoothTitle },
+    { value: 'flat', label: r.flat, title: r.flatTitle },
+  ];
+};
 
 /** Retouch mode: every stroke is filled from its surroundings as soon as it ends. Each stroke is one undo step. */
 export const RetouchPanel = ({ item }: { item: QueueItem }) => {
   const { editor, notify, dispatch, setEdit } = useApp();
+  const t = useT();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const mask = useMemo(() => createMaskCanvas(bitmap.width, bitmap.height), [bitmap.width, bitmap.height]);
   const [version, setVersion] = useState(0);
@@ -140,7 +146,7 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
     setPicking(false);
     if (!color) return;
     setFlatColor(color);
-    dispatch({ type: 'announce', message: `Fill color set to ${toHex(color)}.` });
+    dispatch({ type: 'announce', message: t.retouch.colorSet(toHex(color)) });
   };
 
   /** Removes a finished stroke from the mask (only its own pixels; later strokes stay). */
@@ -177,11 +183,11 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
         try {
           await applyStroke(stroke);
         } catch (error) {
-          notify('error', error instanceof Error ? error.message : String(error));
+          notify('error', errorText(error));
         }
         eraseFromMask(stroke);
       }
-      dispatch({ type: 'announce', message: 'Strokes applied.' });
+      dispatch({ type: 'announce', message: messages().retouch.applied });
     } finally {
       running.current = false;
       setBusy(false);
@@ -202,29 +208,29 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
 
   return (
     <>
-      <Toolbar label="Retouch tools">
-        <BrushToolbar brush={effectiveBrush} onChange={setBrush} paintLabel="Paint" eraseLabel="Restore" eraseDisabled={!canRestore} />
+      <Toolbar label={t.retouch.tools}>
+        <BrushToolbar brush={effectiveBrush} onChange={setBrush} paintLabel={t.retouch.paint} eraseLabel={t.retouch.restore} eraseDisabled={!canRestore} />
         <ToolbarDivider />
-        <Segmented<FillMethod> label="Fill method" value={method} options={METHOD_OPTIONS} onChange={setMethod} />
+        <Segmented<FillMethod> label={t.retouch.method} value={method} options={methodOptions()} onChange={setMethod} />
         {method === 'flat' ? (
           <>
             <ColorInput
-              label="Flat fill color"
+              label={t.retouch.flatColor}
               className="ml-1.5"
               value={flatColor ? toHex(flatColor) : '#808080'}
               onChange={(value) => setFlatColor(fromHex(value))}
             />
-            <Button variant="ghost" size="icon" pressed={picking} onClick={() => setPicking((value) => !value)} aria-label="Pick fill color from the image" title="Eyedropper">
+            <Button variant="ghost" size="icon" pressed={picking} onClick={() => setPicking((value) => !value)} aria-label={t.retouch.pick} title={t.retouch.eyedropper}>
               <Icon name="eyedropper" />
             </Button>
-            <Button variant="ghost" size="sm" pressed={!flatColor} onClick={() => setFlatColor(null)} title="Median color of a 4 px ring around each stroke">
-              Auto
+            <Button variant="ghost" size="sm" pressed={!flatColor} onClick={() => setFlatColor(null)} title={t.retouch.autoTitle}>
+              {t.retouch.auto}
             </Button>
           </>
         ) : null}
         <span className="min-w-4 flex-1" />
-        <Button variant="ghost" size="sm" disabled={!item.editedBitmap} onClick={() => setEdit(item.id, null)} title="Go back to the original image (undoable)">
-          Revert all
+        <Button variant="ghost" size="sm" disabled={!item.editedBitmap} onClick={() => setEdit(item.id, null)} title={t.retouch.revertTitle}>
+          {t.retouch.revertAll}
         </Button>
       </Toolbar>
       <Stage>
@@ -238,21 +244,21 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
           version={version}
           onStrokeEnd={handleStrokeEnd}
           onPick={picking ? handlePick : undefined}
-          label="Retouch brush"
+          label={t.retouch.brushLabel}
         />
         {slow ? (
           <HintChip tone="busy">
             <span className="flex items-center gap-2">
-              <Spinner /> Applying strokes…
+              <Spinner /> {t.retouch.applying}
             </span>
           </HintChip>
         ) : (
           <HintChip>
             {picking
-              ? 'Click the image to pick the fill color.'
+              ? t.retouch.pickHint
               : effectiveBrush.erase
-                ? 'Brush over an area to bring back the original pixels.'
-                : 'Paint over an object to remove it. Works best on plain or smoothly shaded backgrounds, not on textures like grass or text.'}
+                ? t.retouch.restoreHint
+                : t.retouch.paintHint}
           </HintChip>
         )}
       </Stage>

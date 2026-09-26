@@ -6,6 +6,8 @@ import { collectDroppedFiles, compareFilePaths, FILE_INPUT_ACCEPT, looksLikeImag
 import { Button, Keycap } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { UrlInput } from './UrlInput';
+import { errorText, messages } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 type CornerMotion = 'breathe' | 'snap' | 'none';
 
@@ -44,6 +46,7 @@ const hasFiles = (event: DragEvent): boolean => Array.from(event.dataTransfer?.t
 /** Accepts file/folder drops anywhere in the window and shows an overlay while dragging. */
 export const WindowDropTarget = () => {
   const { addFiles, notify } = useApp();
+  const t = useT();
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
 
@@ -72,12 +75,12 @@ export const WindowDropTarget = () => {
       try {
         const files = await collectDroppedFiles(event.dataTransfer);
         if (files.length === 0) {
-          notify('warning', 'No images found in what you dropped.');
+          notify('warning', messages().empty.noImagesDropped);
           return;
         }
         await addFiles(files);
       } catch (error) {
-        notify('error', `Couldn't read the dropped items: ${error instanceof Error ? error.message : String(error)}`);
+        notify('error', messages().empty.dropFailed(errorText(error)));
       }
     };
 
@@ -98,9 +101,9 @@ export const WindowDropTarget = () => {
     <div className="pointer-events-none fixed inset-0 z-50 bg-app/90 backdrop-blur-[2px]">
       <CropCorners motion="snap" inset={16} size={48} />
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center [animation:lc-rise_.32s_var(--ease-out)]">
-        <p className="text-[52px] leading-none font-[650] tracking-[-.035em] max-lg:text-4xl">Drop to add images</p>
+        <p className="text-[52px] leading-none font-[650] tracking-[-.035em] max-lg:text-4xl">{t.empty.dropTitle}</p>
         <p className="flex items-center gap-1.5 text-sm text-ink-2">
-          <Icon name="lock" className="size-3.5 text-success" /> Files and folders are read locally — nothing is uploaded.
+          <Icon name="lock" className="size-3.5 text-success" /> {t.empty.dropPrivacy}
         </p>
       </div>
     </div>
@@ -112,6 +115,7 @@ type FilePickersProps = { variant?: 'hero' | 'header' | 'icons' };
 /** "Add files" and "Add folder" buttons with their hidden inputs. */
 export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
   const { addFiles } = useApp();
+  const t = useT();
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
@@ -130,15 +134,15 @@ export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
 
   const inputs = (
     <>
-      <input ref={fileInput} type="file" accept={FILE_INPUT_ACCEPT} multiple hidden onChange={handleChange} aria-label="Choose image files" />
-      <input ref={folderInput} type="file" multiple hidden onChange={handleChange} aria-label="Choose a folder of images" />
+      <input ref={fileInput} type="file" accept={FILE_INPUT_ACCEPT} multiple hidden onChange={handleChange} aria-label={t.input.chooseFiles} />
+      <input ref={folderInput} type="file" multiple hidden onChange={handleChange} aria-label={t.input.chooseFolder} />
     </>
   );
 
   if (variant === 'icons') {
     return (
       <div className="flex gap-1">
-        <Button size="icon" variant="ghost" onClick={() => fileInput.current?.click()} aria-label="Add files">
+        <Button size="icon" variant="ghost" onClick={() => fileInput.current?.click()} aria-label={t.input.addFiles}>
           <Icon name="upload" />
         </Button>
         {inputs}
@@ -150,10 +154,10 @@ export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
   return (
     <div className="flex gap-2">
       <Button variant={header ? 'secondary' : 'primary'} size={header ? 'md' : 'lg'} onClick={() => fileInput.current?.click()}>
-        <Icon name="upload" /> Add files
+        <Icon name="upload" /> {t.input.addFiles}
       </Button>
       <Button size={header ? 'md' : 'lg'} onClick={() => folderInput.current?.click()} className={cn({ 'max-sm:hidden': !header })}>
-        <Icon name="folder" /> Add folder
+        <Icon name="folder" /> {t.input.addFolder}
       </Button>
       {inputs}
     </div>
@@ -161,14 +165,16 @@ export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
 };
 
 /** The empty state: the whole stage is the drop zone, framed by breathing crop corners. */
-export const EmptyDropZone = () => (
+export const EmptyDropZone = () => {
+  const t = useT();
+  return (
   <div className="relative flex min-h-[56vh] flex-1 items-center overflow-hidden rounded-lg bg-sunken bg-[radial-gradient(var(--color-dot)_1px,transparent_1px)] bg-size-[16px_16px] max-lg:rounded-none">
     <CropCorners motion="breathe" inset={24} />
     <div className="mx-auto w-full max-w-[44rem] px-10 py-16 max-lg:px-8">
       {/* Balanced wrapping: never a lone "images." or "device." on its own line. */}
       <h2 className="text-[clamp(36px,4.4vw,52px)] leading-[1.04] font-[650] tracking-[-.035em] text-balance">
-        <span className="block">Drop, paste, or pick images.</span>
-        <span className="block text-ink-3">Nothing leaves your device.</span>
+        <span className="block">{t.empty.headline}</span>
+        <span className="block text-ink-3">{t.empty.subline}</span>
       </h2>
       <div className="mt-8 flex flex-wrap items-center gap-2">
         <FilePickers variant="hero" />
@@ -176,11 +182,11 @@ export const EmptyDropZone = () => (
       </div>
       <p className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-3">
         <span className="flex items-center gap-1.5 max-lg:hidden">
-          <Keycap>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl V'}</Keycap> paste an image or URL
+          <Keycap>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : `${t.shortcuts.mod} V`}</Keycap> {t.empty.pasteHint}
         </span>
-        <span>Folders and ZIP files work too</span>
+        <span>{t.empty.foldersHint}</span>
       </p>
-      <ul aria-label="Supported formats" className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1 font-mono text-xs text-ink-3">
+      <ul aria-label={t.empty.formats} className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1 font-mono text-xs text-ink-3">
         {SUPPORTED_FORMAT_LABELS.map((label, index) => (
           // The separator trails its item, so a line never starts with "·".
           <li key={label} className="whitespace-nowrap">
@@ -192,3 +198,4 @@ export const EmptyDropZone = () => (
     </div>
   </div>
 );
+};

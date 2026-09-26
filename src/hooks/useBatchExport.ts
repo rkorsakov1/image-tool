@@ -4,6 +4,7 @@ import { formatBytes } from '../lib/format';
 import type { EncodedOutput } from '../lib/types';
 import { triggerDownload, useApp } from '../state/AppContext';
 import { encodeQueueItem, toEncodedOutput } from '../state/encoding';
+import { errorText, messages, translateError } from '../i18n';
 
 type DirectoryHandle = {
   getFileHandle: (name: string, options: { create: boolean }) => Promise<{
@@ -50,7 +51,7 @@ export const useBatchExport = () => {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           dispatch({ type: 'encodeFailed', id: item.id, revision: item.revision, error: message });
-          notify('error', `${item.sourceName}: ${message}`);
+          notify('error', `${item.sourceName}: ${translateError(message)}`);
         }
       }
       done += 1;
@@ -87,9 +88,9 @@ export const useBatchExport = () => {
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
       triggerDownload(blob, `localcrop-${stamp}.zip`);
       recordSavings(files);
-      dispatch({ type: 'announce', message: `Exported ${files.length} images as a ${formatBytes(blob.size)} ZIP.` });
+      dispatch({ type: 'announce', message: messages().batch.exported(files.length, formatBytes(blob.size)) });
     } catch (error) {
-      notify('error', `Export failed: ${error instanceof Error ? error.message : String(error)}`);
+      notify('error', messages().batch.exportFailed(errorText(error)));
     } finally {
       setProgress(null);
     }
@@ -116,9 +117,9 @@ export const useBatchExport = () => {
         setProgress({ phase: 'saving', done: index + 1, total: files.length });
       }
       const bytes = recordSavings(files);
-      dispatch({ type: 'announce', message: `Saved ${files.length} images (${formatBytes(bytes)}) to the folder.` });
+      dispatch({ type: 'announce', message: messages().batch.savedFolder(files.length, formatBytes(bytes)) });
     } catch (error) {
-      notify('error', `Saving to the folder failed: ${error instanceof Error ? error.message : String(error)}`);
+      notify('error', messages().batch.folderFailed(errorText(error)));
     } finally {
       setProgress(null);
     }
@@ -128,7 +129,8 @@ export const useBatchExport = () => {
 };
 
 export const describeProgress = (progress: BatchProgress): string => {
-  if (progress.phase === 'encoding') return `Encoding ${progress.done} of ${progress.total}…`;
-  if (progress.phase === 'packing') return `Building ZIP of ${progress.total} files…`;
-  return `Saving ${progress.done} of ${progress.total}…`;
+  const b = messages().batch;
+  if (progress.phase === 'encoding') return b.encoding(progress.done, progress.total);
+  if (progress.phase === 'packing') return b.packing(progress.total);
+  return b.saving(progress.done, progress.total);
 };

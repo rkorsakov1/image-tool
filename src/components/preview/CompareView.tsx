@@ -11,6 +11,7 @@ import { useApp } from '../../state/AppContext';
 import { HintChip, Stage, Toolbar } from '../layout/Stage';
 import { focusRing, Segmented } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { useT } from '../../i18n/useT';
 import { checkerboardClass } from './Checkerboard';
 
 type Zoom = 'fit' | 1 | 2;
@@ -27,6 +28,7 @@ type Drag = { pointerId: number; kind: 'split' | 'pan'; startX: number; startY: 
 /** Before/after split: left = source crop resampled to the output size, right = the encoded file. */
 export const CompareView = ({ item, reference }: CompareViewProps) => {
   const { state } = useApp();
+  const t = useT();
   const preset = getItemPreset(state, item);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -52,11 +54,11 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
   if (!output) {
     return (
       <>
-        <Toolbar label="Compare zoom">
-          <span className="text-xs text-ink-3">Left: source resampled · Right: encoded file</span>
+        <Toolbar label={t.compare.zoomToolbar}>
+          <span className="text-xs text-ink-3">{t.compare.legend}</span>
         </Toolbar>
         <Stage>
-          <HintChip>The comparison appears once the first preview is encoded.</HintChip>
+          <HintChip>{t.compare.pending}</HintChip>
         </Stage>
       </>
     );
@@ -119,16 +121,16 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
     ? { left: view.offsetX, top: view.offsetY, width: view.displayWidth, height: view.displayHeight }
     : undefined;
 
-  const encodedLabel = `Encoded · ${FORMAT_LABELS[preset.format]}${preset.format === 'png' ? '' : ` q${output.quality}`} · ${formatBytes(output.blob.size)}`;
+  const encodedLabel = `${t.compare.encoded} · ${FORMAT_LABELS[preset.format]}${preset.format === 'png' ? '' : ` q${output.quality}`} · ${formatBytes(output.blob.size)}`;
   const handleX = view ? view.offsetX + (view.displayWidth * split) / 100 : 0;
 
   return (
     <>
-      <Toolbar label="Compare zoom">
-        <Segmented<Zoom> label="Zoom" value={zoom} options={ZOOMS} onChange={setZoom} />
-        <span className="ml-2 text-xs text-ink-3">{zoomed ? 'Drag to pan' : 'Drag to compare'}</span>
+      <Toolbar label={t.compare.zoomToolbar}>
+        <Segmented<Zoom> label={t.compare.zoom} value={zoom} options={ZOOMS.map((option) => (option.value === 'fit' ? { ...option, label: t.compare.fit } : option))} onChange={setZoom} />
+        <span className="ml-2 text-xs text-ink-3">{zoomed ? t.compare.dragPan : t.compare.dragCompare}</span>
         <span className="min-w-4 flex-1" />
-        <span className="text-xs text-ink-3 max-lg:hidden">Left: source resampled · Right: encoded file</span>
+        <span className="text-xs text-ink-3 max-lg:hidden">{t.compare.legend}</span>
       </Toolbar>
       <Stage>
         <div
@@ -147,14 +149,14 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
               <div aria-hidden="true" className={cn('absolute', checkerboardClass)} style={layerStyle} />
               <img
                 src={output.url}
-                alt="Encoded output"
+                alt={t.compare.encodedAlt}
                 draggable={false}
                 className={cn('absolute max-w-none', { '[image-rendering:pixelated]': zoom === 2 })}
                 style={layerStyle}
               />
               <canvas
                 ref={canvasRef}
-                aria-label="Source crop, resampled to the output size"
+                aria-label={t.compare.sourceAlt}
                 className={cn('absolute', { '[image-rendering:pixelated]': zoom === 2, invisible: !reference })}
                 style={{ ...layerStyle, clipPath: `inset(0 ${100 - split}% 0 0)` }}
               />
@@ -166,11 +168,11 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
               <div
                 role="slider"
                 tabIndex={0}
-                aria-label="Before/after split position"
+                aria-label={t.compare.slider}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={split}
-                aria-valuetext={`${split}% source, ${100 - split}% encoded`}
+                aria-valuetext={t.compare.sliderValue(split)}
                 onPointerDown={(event) => handlePointerDown(event, 'split')}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -186,7 +188,7 @@ export const CompareView = ({ item, reference }: CompareViewProps) => {
                 <Icon name="split" className="size-4" strokeWidth={1.8} />
               </div>
               <span className="pointer-events-none absolute top-3 left-3 rounded-md bg-[rgb(24_24_22/.8)] px-2 py-1 text-[11px] font-semibold text-white">
-                Source · resampled
+                {t.compare.source}
               </span>
               <span className="pointer-events-none absolute top-3 right-3 rounded-md bg-[rgb(24_24_22/.8)] px-2 py-1 font-mono text-[11px] font-semibold text-white">
                 {encodedLabel}

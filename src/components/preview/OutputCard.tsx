@@ -5,34 +5,38 @@ import { useApp } from '../../state/AppContext';
 import { sectionLabelClass } from '../ui/Button';
 import { Spinner } from '../ui/Icon';
 import { checkerboardClass } from './Checkerboard';
+import { messages, translateError } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 type OutputCardProps = { item: QueueItem | null; preset: Preset };
 
 type Status = { tone: 'success' | 'muted' | 'danger'; label: string; busy?: boolean };
 
 const outputStatus = (item: QueueItem | null): Status => {
-  if (!item) return { tone: 'muted', label: 'Waiting for an image' };
-  if (item.status === 'error') return { tone: 'danger', label: 'Error' };
+  const o = messages().output;
+  if (!item) return { tone: 'muted', label: o.waitingForImage };
+  if (item.status === 'error') return { tone: 'danger', label: o.error };
   const stale = item.outputRevision !== item.revision;
-  if (stale) return item.status === 'encoding' || item.output ? { tone: 'muted', label: 'Encoding', busy: true } : { tone: 'muted', label: 'Waiting' };
-  if (item.output?.warning) return { tone: 'danger', label: 'Target missed' };
-  return { tone: 'success', label: 'Encoded · exact' };
+  if (stale) return item.status === 'encoding' || item.output ? { tone: 'muted', label: o.encoding, busy: true } : { tone: 'muted', label: o.waiting };
+  if (item.output?.warning) return { tone: 'danger', label: o.targetMissed };
+  return { tone: 'success', label: o.exact };
 };
 
 /** The real encoded output: thumbnail, exact size, dimensions, quality and savings. */
 export const OutputCard = ({ item, preset }: OutputCardProps) => {
   const { outputFilename } = useApp();
+  const t = useT();
   const output = item?.output ?? null;
   const stale = item !== null && item.outputRevision !== item.revision;
   const status = outputStatus(item);
-  const qualityLabel = preset.format === 'png' ? 'lossless' : `q${output?.quality ?? preset.quality}`;
+  const qualityLabel = preset.format === 'png' ? t.output.lossless : `q${output?.quality ?? preset.quality}`;
   const ratio = item && output ? Math.min(1, output.blob.size / Math.max(1, item.sourceBytes)) : 0;
 
   return (
     <section aria-labelledby="output-heading" aria-busy={status.busy}>
       <div className="mb-2.5 flex items-center justify-between">
         <h3 id="output-heading" className={sectionLabelClass}>
-          Output
+          {t.output.title}
         </h3>
         <span
           className={cn('flex items-center gap-1.5 text-[11px]', {
@@ -51,9 +55,9 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
           {output ? (
             <img
               src={output.url}
-              alt={`Encoded output preview, ${output.width} by ${output.height}`}
+              alt={t.output.preview(output.width, output.height)}
               draggable={!stale}
-              title={stale ? undefined : 'Drag to your desktop or into another app'}
+              title={stale ? undefined : t.output.dragOut}
               onDragStart={(event) => {
                 if (!item) return;
                 // Chromium turns this into a real file drop with the right name; other browsers drag the image.
@@ -71,7 +75,7 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
             className={cn('font-mono text-[26px] leading-tight font-semibold tracking-[-.02em] transition-colors duration-300', {
               'text-ink-3': stale || !output,
             })}
-            title={output ? `${output.blob.size.toLocaleString()} bytes` : undefined}
+            title={output ? t.output.bytes(output.blob.size.toLocaleString(t.meta.short === 'DE' ? 'de-DE' : 'en-US')) : undefined}
           >
             {output ? formatBytes(output.blob.size) : '—'}
           </p>
@@ -83,17 +87,17 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
                 </span>
                 {output.encoder === 'native' ? (
                   <span
-                    title="The optimized encoder couldn't load, so the browser's built-in encoder was used."
+                    title={t.output.nativeTitle}
                     className="rounded-sm bg-warning-bg px-1 font-sans text-[10px] font-semibold tracking-wide text-warning uppercase"
                   >
-                    Native encoder
+                    {t.output.nativeEncoder}
                   </span>
                 ) : null}
               </>
             ) : item ? (
-              item.status === 'error' ? 'Encoding failed' : 'Preparing preview…'
+              item.status === 'error' ? t.output.failed : t.output.preparing
             ) : (
-              'No image yet'
+              t.output.noImage
             )}
           </p>
         </div>
@@ -105,16 +109,18 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
             <div className="h-full rounded-full bg-success-bar transition-[width] duration-300" style={{ width: `${Math.max(2, ratio * 100)}%` }} />
           </div>
           <div className="mt-1 flex justify-between font-mono text-[11px] text-ink-3">
-            <span className={cn({ 'text-success': output.blob.size < item.sourceBytes })}>{formatSavings(item.sourceBytes, output.blob.size)} vs source</span>
+            <span className={cn({ 'text-success': output.blob.size < item.sourceBytes })}>{formatSavings(item.sourceBytes, output.blob.size)} {t.output.vsSource}</span>
             <span>{formatBytes(item.sourceBytes)}</span>
           </div>
         </div>
       ) : null}
 
-      {output?.warning && !stale ? <p className="mt-2 text-xs text-danger">{output.warning}</p> : null}
+      {output?.warning && !stale ? (
+        <p className="mt-2 text-xs text-danger">{t.output.targetMissedDetail(preset.targetMaxBytes ? formatBytes(preset.targetMaxBytes) : '')}</p>
+      ) : null}
       {item?.status === 'error' && item.error ? (
         <p role="alert" className="mt-2 text-xs text-danger">
-          {item.error}
+          {translateError(item.error)}
         </p>
       ) : null}
     </section>

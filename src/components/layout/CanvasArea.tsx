@@ -14,15 +14,17 @@ import { RetouchPanel } from '../retouch/RetouchPanel';
 import { Button, focusRing, Keycap } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Stage, Toolbar, ToolbarDivider } from './Stage';
+import { useT } from '../../i18n/useT';
 
-export const MODES: { mode: Mode; label: string; key: string }[] = [
-  { mode: 'crop', label: 'Crop', key: 'C' },
-  { mode: 'retouch', label: 'Retouch', key: 'E' },
-  { mode: 'background', label: 'Background', key: 'B' },
-  { mode: 'compare', label: 'Compare', key: 'V' },
+export const MODES: { mode: Mode; key: string }[] = [
+  { mode: 'crop', key: 'C' },
+  { mode: 'retouch', key: 'E' },
+  { mode: 'background', key: 'B' },
+  { mode: 'compare', key: 'V' },
 ];
 
 const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) => {
+  const t = useT();
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
@@ -35,7 +37,7 @@ const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => vo
   };
 
   return (
-    <div role="tablist" aria-label="Editor mode" className="inline-flex shrink-0 rounded-[9px] bg-sunken p-0.75" onKeyDown={handleKeyDown}>
+    <div role="tablist" aria-label={t.modes.label} className="inline-flex shrink-0 rounded-[9px] bg-sunken p-0.75" onKeyDown={handleKeyDown}>
       {MODES.map((entry) => {
         const selected = entry.mode === mode;
         return (
@@ -54,7 +56,7 @@ const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => vo
               'text-ink-2 hover:text-ink': !selected,
             })}
           >
-            {entry.label}
+            {t.modes[entry.mode]}
             <Keycap className="max-lg:hidden">{entry.key}</Keycap>
           </button>
         );
@@ -65,6 +67,7 @@ const ModeTabs = ({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => vo
 
 export const UndoRedo = () => {
   const { state, dispatch } = useApp();
+  const t = useT();
   return (
     <div className="flex shrink-0 items-center">
       <Button
@@ -72,9 +75,9 @@ export const UndoRedo = () => {
         size="icon"
         disabled={state.history.past.length === 0}
         onClick={() => dispatch({ type: 'undo' })}
-        aria-label="Undo"
+        aria-label={t.history.undo}
         aria-keyshortcuts="Control+Z Meta+Z"
-        title="Undo (Ctrl/⌘+Z)"
+        title={t.history.undoTitle}
       >
         <Icon name="undo" />
       </Button>
@@ -83,9 +86,9 @@ export const UndoRedo = () => {
         size="icon"
         disabled={state.history.future.length === 0}
         onClick={() => dispatch({ type: 'redo' })}
-        aria-label="Redo"
+        aria-label={t.history.redo}
         aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z"
-        title="Redo (Ctrl/⌘+Shift+Z)"
+        title={t.history.redoTitle}
       >
         <Icon name="redo" />
       </Button>
@@ -95,6 +98,7 @@ export const UndoRedo = () => {
 
 const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
   const { state, dispatch } = useApp();
+  const t = useT();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const image = transformedSize(bitmap, item.transform.rotation);
   const geometry = resolveOutputGeometry(image, item.crop, preset);
@@ -103,18 +107,18 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
   const setTransform = (transform: QueueItem['transform']) => dispatch({ type: 'setTransform', id: item.id, transform });
 
   return (
-    <Toolbar label="Crop tools">
-      <Button variant="ghost" size="icon" aria-label="Rotate 90° left" title="Rotate left" onClick={() => setTransform(rotateTransform(item.transform, 'left'))}>
+    <Toolbar label={t.crop.tools}>
+      <Button variant="ghost" size="icon" aria-label={t.crop.rotateLeft} title={t.crop.rotateLeftTitle} onClick={() => setTransform(rotateTransform(item.transform, 'left'))}>
         <Icon name="rotateLeft" />
       </Button>
-      <Button variant="ghost" size="icon" aria-label="Rotate 90° right" title="Rotate right" onClick={() => setTransform(rotateTransform(item.transform, 'right'))}>
+      <Button variant="ghost" size="icon" aria-label={t.crop.rotateRight} title={t.crop.rotateRightTitle} onClick={() => setTransform(rotateTransform(item.transform, 'right'))}>
         <Icon name="rotateRight" />
       </Button>
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Flip horizontal"
-        title="Flip horizontal"
+        aria-label={t.crop.flipH}
+        title={t.crop.flipH}
         pressed={item.transform.flipH}
         onClick={() => setTransform({ ...item.transform, flipH: !item.transform.flipH })}
       >
@@ -123,8 +127,8 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Flip vertical"
-        title="Flip vertical"
+        aria-label={t.crop.flipV}
+        title={t.crop.flipV}
         pressed={item.transform.flipV}
         onClick={() => setTransform({ ...item.transform, flipV: !item.transform.flipV })}
       >
@@ -134,8 +138,8 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Rule-of-thirds overlay"
-        title="Rule of thirds"
+        aria-label={t.crop.thirds}
+        title={t.crop.thirdsTitle}
         pressed={state.prefs.showThirds}
         disabled={contain}
         onClick={() => dispatch({ type: 'setPref', patch: { showThirds: !state.prefs.showThirds } })}
@@ -143,27 +147,30 @@ const CropToolbar = ({ item, preset }: { item: QueueItem; preset: Preset }) => {
         <Icon name="grid" />
       </Button>
       <Button variant="ghost" size="sm" disabled={contain || item.crop === null} onClick={() => dispatch({ type: 'setCrop', id: item.id, crop: null })} aria-keyshortcuts="R">
-        <Icon name="reset" /> Reset <Keycap className="max-lg:hidden">R</Keycap>
+        <Icon name="reset" /> {t.crop.reset} <Keycap className="max-lg:hidden">R</Keycap>
       </Button>
       <span className="min-w-4 flex-1" />
       {geometry.upscaleCapped ? (
         <span
           className="mr-2 flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-warning-bg pr-0.5 pl-2 text-xs text-warning ring-1 ring-warning-line"
-          title={`The ${contain ? 'image' : 'crop'} is smaller than ${geometry.requestedWidth} × ${geometry.requestedHeight}, so it isn't enlarged.`}
+          title={t.crop.cappedTitle(contain, geometry.requestedWidth, geometry.requestedHeight)}
         >
           <Icon name="warn" className="size-3.5" />
-          Capped at <span className="font-mono">{geometry.outWidth} × {geometry.outHeight}</span>
+          {t.crop.cappedAt} <span className="font-mono">{geometry.outWidth} × {geometry.outHeight}</span>
           <button
             type="button"
             onClick={() => dispatch({ type: 'setOverrides', id: item.id, patch: { allowUpscale: true } })}
             className={cn('h-6 rounded bg-raised px-1.5 font-medium text-ink ring-1 ring-warning-line hover:bg-warning-bg', focusRing)}
           >
-            Allow upscaling
+            {t.crop.allowUpscaling}
           </button>
         </span>
       ) : null}
       <span className="shrink-0 font-mono text-xs text-ink-3">
-        {contain ? `Whole image ${image.width} × ${image.height}` : `Crop ${Math.round(crop.width)} × ${Math.round(crop.height)}`} →{' '}
+        {/* The source size gives way first when the toolbar is short on room (long German labels). */}
+        <span className={cn({ 'max-2xl:hidden': geometry.upscaleCapped })}>
+          {contain ? t.crop.wholeImage(image.width, image.height) : t.crop.cropSize(Math.round(crop.width), Math.round(crop.height))} →{' '}
+        </span>
         <strong className="font-semibold text-ink">
           {geometry.outWidth} × {geometry.outHeight}
         </strong>

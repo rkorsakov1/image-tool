@@ -3,6 +3,7 @@ import { computeAutoCrop, resolveOutputGeometry, targetAspect, transformedSize }
 import type { Preset, QueueItem } from '../../lib/types';
 import { useViewTransform } from '../../hooks/useViewTransform';
 import { useApp } from '../../state/AppContext';
+import { useT } from '../../i18n/useT';
 import { CropBox } from './CropBox';
 import { ImageCanvas } from './ImageCanvas';
 
@@ -10,6 +11,7 @@ type CropEditorProps = { item: QueueItem; preset: Preset };
 
 export const CropEditor = ({ item, preset }: CropEditorProps) => {
   const { state, dispatch } = useApp();
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const image = useMemo(() => transformedSize(bitmap, item.transform.rotation), [bitmap, item.transform.rotation]);
@@ -82,7 +84,7 @@ export const CropEditor = ({ item, preset }: CropEditorProps) => {
             }}
           />
           <p className="sr-only" aria-live="polite">
-            Contain mode: the whole image is fitted inside the {geometry.outWidth} by {geometry.outHeight} output and padded with the matte color.
+            {t.crop.containNote(geometry.outWidth, geometry.outHeight)}
           </p>
         </>
       ) : null}

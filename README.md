@@ -41,7 +41,7 @@ Most "online image tools" upload your photos to a server. LocalCrop is a static 
 - EXIF, GPS and other metadata never reach the output, because it's rebuilt from pixels.
 
 **Everywhere**
-- Light and dark themes, a phone layout with a bottom sheet, and full keyboard control (press <kbd>?</kbd> in the app).
+- English and German ([Deutsch](https://rkorsakov1.github.io/localcrop/de/)), light and dark themes, a phone layout with a bottom sheet, and full keyboard control (press <kbd>?</kbd> in the app).
 
 ## Browser support
 

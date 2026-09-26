@@ -3,13 +3,16 @@
 
 import { resolveOutputGeometry, transformedSize } from '../lib/cropMath';
 import { drawTransformed, get2d, hasTransparency, isIdentityTransform, type Surface } from '../lib/drawing';
-import { formatBytes, FORMAT_LABELS, FORMAT_MIME } from '../lib/format';
+import { FORMAT_LABELS, FORMAT_MIME } from '../lib/format';
 import { flatFill, harmonicFill, ringMedianColor } from '../lib/inpaint';
 import { findQualityForTarget } from '../lib/qualitySearch';
 import { unsharpMask } from '../lib/sharpen';
 import type { CropRect, OutputFormat } from '../lib/types';
 import { encodeRaw, optimisePng } from './codecs';
 import type { ComposeJob, ComposeResult, EncodeJob, EncodeResult, FillJob, FillResult } from './protocol';
+
+/** EncodeResult.warning when the target size can't be reached. */
+export const TARGET_MISSED = 'target-missed';
 
 export type CanvasEnv = {
   create: (width: number, height: number) => Surface;
@@ -186,7 +189,8 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
       quality = search.quality;
       encoded = attempts.get(search.quality) as Encoded;
       if (!search.reachable) {
-        warning = `Can't reach ${formatBytes(settings.targetMaxBytes)} at this size — reduce dimensions or change format.`;
+        // A code, not text: the UI shows it in the user's language.
+        warning = TARGET_MISSED;
       }
     } else {
       encoded = await encodeAt(settings.quality);

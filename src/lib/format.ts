@@ -1,3 +1,4 @@
+import { isGerman } from '../i18n';
 import type { OutputFormat } from './types';
 
 export const FORMAT_EXTENSIONS: Record<OutputFormat, string> = {
@@ -32,23 +33,26 @@ export const formatBytes = (bytes: number): string => {
     unitIndex += 1;
   }
   const digits = value >= 100 ? 0 : 1;
-  return `${value.toFixed(digits)} ${units[unitIndex]}`;
+  const number = value.toFixed(digits);
+  return `${isGerman() ? number.replace('.', ',') : number} ${units[unitIndex]}`;
 };
 
 /** Signed percentage change from `before` to `after`, e.g. "−82%" or "+4%". */
 export const formatSavings = (before: number, after: number): string => {
   if (before <= 0) return '—';
   const change = Math.round(((after - before) / before) * 100);
-  if (change === 0) return '±0%';
-  if (change < 0) return `−${Math.abs(change)}%`;
-  return `+${change}%`;
+  const percent = isGerman() ? ' %' : '%';
+  if (change === 0) return `±0${percent}`;
+  if (change < 0) return `−${Math.abs(change)}${percent}`;
+  return `+${change}${percent}`;
 };
 
 /** Parses "200 KB", "1.5mb", "150000" into bytes. Returns null if unparseable or non-positive. */
 export const parseByteSize = (input: string): number | null => {
-  const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|k|mb|m)?\s*$/i.exec(input);
+  // Accepts a decimal comma too ("1,5 MB").
+  const match = /^\s*(\d+(?:[.,]\d+)?)\s*(b|kb|k|mb|m)?\s*$/i.exec(input);
   if (!match) return null;
-  const value = Number(match[1]);
+  const value = Number((match[1] ?? '').replace(',', '.'));
   const unit = (match[2] ?? 'kb').toLowerCase();
   const multiplier = unit.startsWith('m') ? 1_000_000 : unit.startsWith('k') ? 1000 : 1;
   const bytes = Math.round(value * multiplier);

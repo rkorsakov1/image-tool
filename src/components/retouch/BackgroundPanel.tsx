@@ -15,13 +15,9 @@ import { ColorInput, Toggle } from '../ui/Field';
 import { Icon, Spinner } from '../ui/Icon';
 import { BrushToolbar } from './BrushToolbar';
 import { createMaskCanvas, defaultBrushSize, MaskEditor, readMask, type BrushSettings } from './MaskEditor';
+import { errorText, messages } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
-const STAGE_LABEL: Record<SegmentProgress['stage'], string> = {
-  runtime: 'Downloading the runtime',
-  model: 'Downloading the model',
-  session: 'Starting the model',
-  inference: 'Finding the subject',
-};
 const STAGE_STEP: Record<SegmentProgress['stage'], number> = { runtime: 1, model: 1, session: 2, inference: 3 };
 
 /** The current image, fitted to the stage, with an optional scan line while the model runs. */
@@ -55,6 +51,8 @@ const FloatingCard = ({ children }: { children: React.ReactNode }) => (
 );
 
 const ProgressCard = ({ progress }: { progress: SegmentProgress }) => {
+  const t = useT();
+  const STAGE_LABEL = t.background.stages;
   const determinate = progress.total > 0;
   const percent = determinate ? Math.round((progress.loaded / progress.total) * 100) : 0;
   return (
@@ -81,7 +79,7 @@ const ProgressCard = ({ progress }: { progress: SegmentProgress }) => {
           <div className="h-full w-1/3 animate-pulse bg-primary" />
         )}
       </div>
-      <p className="mt-2 text-xs text-ink-3">Step {STAGE_STEP[progress.stage]} of 3 · download, start, then find the subject</p>
+      <p className="mt-2 text-xs text-ink-3">{t.background.step(STAGE_STEP[progress.stage])}</p>
     </FloatingCard>
   );
 };
@@ -89,6 +87,7 @@ const ProgressCard = ({ progress }: { progress: SegmentProgress }) => {
 /** Background mode: segment with the on-device model; the cut-out is applied at once, and each Restore/Erase stroke updates it. */
 export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
   const { state, dispatch, editor, notify, setEdit } = useApp();
+  const t = useT();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const cutout = item.cutout;
   const [progress, setProgress] = useState<SegmentProgress | null>(null);
@@ -140,10 +139,10 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
       const { alpha, provider } = await segmentImage(bitmap, setProgress);
       setCached(true);
       await commit({ base: bitmap, background: null, provider }, createMaskCanvas(bitmap.width, bitmap.height, alpha));
-      dispatch({ type: 'announce', message: `Background removed using ${provider === 'webgpu' ? 'WebGPU' : 'the CPU'}. Refine with Restore and Erase.` });
+      dispatch({ type: 'announce', message: messages().background.done(provider === 'webgpu') });
       if (preset.format === 'jpeg') setJpegPrompt(true);
     } catch (error) {
-      notify('error', `Background removal failed: ${error instanceof Error ? error.message : String(error)}`);
+      notify('error', messages().background.failed(errorText(error)));
     } finally {
       setProgress(null);
     }
@@ -167,7 +166,7 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
         try {
           await commit(base, canvas, undefined, mask);
         } catch (error) {
-          notify('error', error instanceof Error ? error.message : String(error));
+          notify('error', errorText(error));
         }
       }
     } finally {
@@ -188,14 +187,14 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
     if (background) setLastColor(background);
     // Dragging through the color picker merges into one undo step.
     void commit({ ...cutout, background }, mask, 'background').catch((error: unknown) =>
-      notify('error', error instanceof Error ? error.message : String(error)),
+      notify('error', errorText(error)),
     );
   };
 
   const discard = () => {
     if (!cutout) return;
     setEdit(item.id, cutout.base === item.sourceBitmap ? null : cutout.base, null);
-    dispatch({ type: 'announce', message: 'Background restored.' });
+    dispatch({ type: 'announce', message: t.background.restored });
   };
 
   const switchFormat = (format: 'webp' | 'png') => {
@@ -206,22 +205,22 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
   return (
     <>
       {cutout && mask ? (
-        <Toolbar label="Background tools">
-          <BrushToolbar brush={brush} onChange={setBrush} paintLabel="Restore" eraseLabel="Erase" />
+        <Toolbar label={t.background.tools}>
+          <BrushToolbar brush={brush} onChange={setBrush} paintLabel={t.background.restore} eraseLabel={t.background.erase} />
           <ToolbarDivider />
-          <Toggle label="Replace background" checked={cutout.background !== null} onChange={(on) => setBackground(on ? lastColor : null)} />
-          <ColorInput label="Background color" className="ml-1.5" value={cutout.background ?? lastColor} disabled={cutout.background === null} onChange={setBackground} />
+          <Toggle label={t.background.replace} checked={cutout.background !== null} onChange={(on) => setBackground(on ? lastColor : null)} />
+          <ColorInput label={t.background.color} className="ml-1.5" value={cutout.background ?? lastColor} disabled={cutout.background === null} onChange={setBackground} />
           <span className="min-w-4 flex-1" />
-          <Button variant="ghost" size="sm" onClick={discard} title="Put the original background back (undoable)">
-            Discard cut-out
+          <Button variant="ghost" size="sm" onClick={discard} title={t.background.discardTitle}>
+            {t.background.discard}
           </Button>
         </Toolbar>
       ) : (
-        <Toolbar label="Background">
+        <Toolbar label={t.background.toolbar}>
           <Button variant="primary" size="sm" disabled={progress !== null} aria-busy={progress !== null} onClick={() => void handleRemove()}>
-            {progress ? <Spinner /> : <Icon name="spark" />} Remove background
+            {progress ? <Spinner /> : <Icon name="spark" />} {t.background.remove}
           </Button>
-          <span className="ml-2 text-xs text-ink-2 max-lg:hidden">Cuts out the subject on this device. Restore and Erase brushes appear after it runs.</span>
+          <span className="ml-2 text-xs text-ink-2 max-lg:hidden">{t.background.intro}</span>
           <span className="min-w-4 flex-1" />
           <span className="font-mono text-[11px] text-ink-3 max-2xl:hidden">{SEGMENTATION_MODEL.label}</span>
         </Toolbar>
@@ -240,17 +239,17 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
               onBrushChange={setBrush}
               version={version}
               onStrokeEnd={handleStrokeEnd}
-              label="Background cut-out"
+              label={t.background.cutout}
             />
             <HintChip tone={busy ? 'busy' : 'neutral'}>
               {busy ? (
                 <span className="flex items-center gap-2">
-                  <Spinner /> Updating the cut-out…
+                  <Spinner /> {t.background.updating}
                 </span>
               ) : (
                 <>
                   <span aria-hidden="true" className="mr-1.5 inline-block size-1.5 rounded-full bg-success-bar align-middle" />
-                  Ran on {cutout.provider === 'webgpu' ? 'the GPU (WebGPU)' : 'the CPU (WebAssembly)'} · Restore brings pixels back, Erase removes them
+                  {t.background.ranOn(cutout.provider === 'webgpu')}
                 </>
               )}
             </HintChip>
@@ -264,16 +263,11 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
               <FloatingCard>
                 <div className="flex items-center gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-semibold">Remove background</p>
-                    <p className="mt-0.5 text-xs text-ink-3">
-                      Runs on this device.{' '}
-                      {cached
-                        ? 'The model is downloaded and works offline.'
-                        : `The first run downloads ${formatBytes(SEGMENTATION_MODEL.bytes + ORT_RUNTIME.wasmBytes)} once; after that it works offline.`}
-                    </p>
+                    <p className="text-[13px] font-semibold">{t.background.remove}</p>
+                    <p className="mt-0.5 text-xs text-ink-3">{t.background.cardText(Boolean(cached), formatBytes(SEGMENTATION_MODEL.bytes + ORT_RUNTIME.wasmBytes))}</p>
                   </div>
                   <Button variant="primary" onClick={() => void handleRemove()}>
-                    <Icon name="spark" /> Remove
+                    <Icon name="spark" /> {t.background.removeShort}
                   </Button>
                 </div>
               </FloatingCard>
@@ -285,11 +279,11 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
       <Dialog
         open={jpegPrompt}
         onClose={() => setJpegPrompt(false)}
-        title="JPEG can’t keep transparency"
+        title={t.background.jpegTitle}
         footer={
           <>
-            <Button onClick={() => switchFormat('webp')}>Switch to WebP</Button>
-            <Button onClick={() => switchFormat('png')}>Switch to PNG</Button>
+            <Button onClick={() => switchFormat('webp')}>{t.background.toWebp}</Button>
+            <Button onClick={() => switchFormat('png')}>{t.background.toPng}</Button>
             <Button
               variant="primary"
               onClick={() => {
@@ -297,15 +291,12 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
                 setBackground(lastColor);
               }}
             >
-              Use a background color
+              {t.background.useColor}
             </Button>
           </>
         }
       >
-        <p className="text-[13px] text-ink-2">
-          The output format is JPEG, so transparent areas would be filled with the matte color ({preset.matteColor.toUpperCase()}). Switch to WebP or
-          PNG to keep transparency, or pick a background color and stay with JPEG.
-        </p>
+        <p className="text-[13px] text-ink-2">{t.background.jpegText(preset.matteColor.toUpperCase())}</p>
       </Dialog>
     </>
   );

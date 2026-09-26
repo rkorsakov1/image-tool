@@ -11,17 +11,20 @@ import { Button, sectionLabelClass } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { inputClass } from '../ui/Field';
 import { Icon } from '../ui/Icon';
+import { messages, presetLabel, translateError } from '../../i18n';
+import { useT } from '../../i18n/useT';
 
 export const describePreset = (preset: Preset): string => {
-  const size = preset.width || preset.height ? `${preset.width ?? 'auto'}×${preset.height ?? 'auto'}` : 'original size';
+  const t = messages();
+  const size = preset.width || preset.height ? `${preset.width ?? t.form.auto}×${preset.height ?? t.form.auto}` : t.presets.originalSize;
   const quality = preset.format === 'png' ? '' : ` q${preset.quality}`;
   const target = preset.targetMaxBytes ? ` ≤${Math.round(preset.targetMaxBytes / 1000)} KB` : '';
-  return `${size} · ${preset.fit} · ${FORMAT_LABELS[preset.format]}${quality}${target}`;
+  return `${size} · ${t.presets.fits[preset.fit]} · ${FORMAT_LABELS[preset.format]}${quality}${target}`;
 };
 
 const newPreset = (existing: readonly Preset[]): Preset => ({
   id: crypto.randomUUID(),
-  name: uniquePresetName('New preset', existing),
+  name: uniquePresetName(messages().presets.newName, existing),
   width: 1600,
   height: null,
   fit: 'cover',
@@ -51,6 +54,7 @@ type RowProps = {
 };
 
 const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, onRename, onDuplicate, onDelete, onMove, onShare }: RowProps) => {
+  const t = useT();
   const [name, setName] = useState(preset.name);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   useEffect(() => setName(preset.name), [preset.name]);
@@ -67,10 +71,10 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
   if (builtin) {
     return (
       <li className="flex min-h-11 items-center gap-3 py-1.5">
-        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{preset.name}</p>
+        <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{presetLabel(preset)}</p>
         <p className="hidden truncate font-mono text-[11px] text-ink-3 sm:block">{describePreset(preset)}</p>
-        <Button size="sm" onClick={onDuplicate} aria-label={`Duplicate ${preset.name}`}>
-          Duplicate
+        <Button size="sm" onClick={onDuplicate} aria-label={t.presets.duplicateNamed(presetLabel(preset))}>
+          {t.presets.duplicate}
         </Button>
       </li>
     );
@@ -82,13 +86,13 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
         type="checkbox"
         checked={selected}
         onChange={onToggleSelected}
-        aria-label={`Select ${preset.name} for export`}
+        aria-label={t.presets.select(preset.name)}
         className="size-4 shrink-0 accent-primary"
       />
       <div className="min-w-0 flex-1">
         <input
           value={name}
-          aria-label={`Name of preset ${preset.name}`}
+          aria-label={t.presets.nameOf(preset.name)}
           onChange={(event) => setName(event.target.value)}
           onBlur={commitName}
           onKeyDown={(event) => {
@@ -99,32 +103,32 @@ const PresetRow = ({ preset, builtin, selected, first, last, onToggleSelected, o
         <p className="mt-0.5 truncate pl-1.5 font-mono text-[11px] text-ink-3">{describePreset(preset)}</p>
       </div>
       {confirmingDelete ? (
-        <div role="group" aria-label={`Confirm deleting ${preset.name}`} className="flex items-center gap-1 rounded-md bg-danger-bg py-1 pr-1 pl-2.5 text-xs text-danger">
-          <span className="mr-1">Delete “{preset.name}”?</span>
+        <div role="group" aria-label={t.presets.confirmDelete(preset.name)} className="flex items-center gap-1 rounded-md bg-danger-bg py-1 pr-1 pl-2.5 text-xs text-danger">
+          <span className="mr-1">{t.presets.deleteQuestion(preset.name)}</span>
           <Button size="xs" variant="ghost" onClick={() => setConfirmingDelete(false)}>
-            Cancel
+            {t.presets.cancel}
           </Button>
           <Button size="xs" variant="danger" autoFocus onClick={onDelete}>
-            Delete
+            {t.presets.delete}
           </Button>
         </div>
       ) : (
         <div className="flex items-center gap-0.5">
-          <Button size="icon-sm" variant="ghost" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${preset.name} up`}>
+          <Button size="icon-sm" variant="ghost" disabled={first} onClick={() => onMove(-1)} aria-label={t.presets.moveUp(preset.name)}>
             <Icon name="up" />
           </Button>
-          <Button size="icon-sm" variant="ghost" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${preset.name} down`}>
+          <Button size="icon-sm" variant="ghost" disabled={last} onClick={() => onMove(1)} aria-label={t.presets.moveDown(preset.name)}>
             <Icon name="down" />
           </Button>
           {onShare ? (
-            <Button size="icon-sm" variant="ghost" onClick={onShare} aria-label={`Copy a share link for ${preset.name}`} title="Copy a link that imports this preset">
+            <Button size="icon-sm" variant="ghost" onClick={onShare} aria-label={t.presets.shareNamed(preset.name)} title={t.presets.shareTitle}>
               <Icon name="link" />
             </Button>
           ) : null}
-          <Button size="icon-sm" variant="ghost" onClick={onDuplicate} aria-label={`Duplicate ${preset.name}`} title="Duplicate">
+          <Button size="icon-sm" variant="ghost" onClick={onDuplicate} aria-label={t.presets.duplicateNamed(preset.name)} title={t.presets.duplicate}>
             <Icon name="duplicate" />
           </Button>
-          <Button size="icon-sm" variant="ghost" onClick={() => setConfirmingDelete(true)} aria-label={`Delete ${preset.name}`} title="Delete">
+          <Button size="icon-sm" variant="ghost" onClick={() => setConfirmingDelete(true)} aria-label={t.presets.deleteNamed(preset.name)} title={t.presets.delete}>
             <Icon name="trash" />
           </Button>
         </div>
@@ -137,37 +141,38 @@ type PresetManagerDialogProps = { open: boolean; onClose: () => void };
 
 export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps) => {
   const { state, dispatch, notify } = useApp();
+  const t = useT();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const allNames = [...BUILTIN_PRESETS, ...state.presets];
 
   const handleDuplicate = (preset: Preset) => {
-    const copy: Preset = { ...preset, id: crypto.randomUUID(), name: uniquePresetName(`${preset.name} copy`, allNames) };
+    const copy: Preset = { ...preset, id: crypto.randomUUID(), name: uniquePresetName(t.presets.copyName(presetLabel(preset)), allNames) };
     dispatch({ type: 'upsertPreset', preset: copy });
-    dispatch({ type: 'announce', message: `Created ${copy.name}.` });
+    dispatch({ type: 'announce', message: t.presets.created(copy.name) });
   };
 
   const handleShare = async (preset: Preset) => {
     const url = `${window.location.origin}${window.location.pathname}${createShareHash([preset])}`;
     try {
       await navigator.clipboard.writeText(url);
-      notify('info', `Share link for ${preset.name} copied. Opening it offers to import the preset.`);
+      notify('info', t.presets.linkCopied(preset.name));
     } catch {
-      window.prompt('Copy this link:', url);
+      window.prompt(t.presets.copyLink, url);
     }
   };
 
   const handleExport = () => {
     const chosen = selected.size > 0 ? state.presets.filter((preset) => selected.has(preset.id)) : state.presets;
     if (chosen.length === 0) {
-      notify('info', 'There are no custom presets to export yet. Duplicate a built-in or save one first.');
+      notify('info', t.presets.nothingToExport);
       return;
     }
     const json = JSON.stringify(createPresetFile(chosen), null, 2);
     const stamp = new Date().toISOString().slice(0, 10);
     triggerDownload(new Blob([json], { type: 'application/json' }), `localcrop-presets-${stamp}.json`);
-    dispatch({ type: 'announce', message: `Exported ${chosen.length} preset${chosen.length === 1 ? '' : 's'}.` });
+    dispatch({ type: 'announce', message: t.presets.exported(chosen.length) });
   };
 
   const handleImportFile = async (file: File) => {
@@ -175,12 +180,12 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
     try {
       parsed = JSON.parse(await file.text());
     } catch {
-      notify('error', `${file.name} isn't valid JSON.`);
+      notify('error', t.presets.invalidJson(file.name));
       return;
     }
     const validation = validatePresetFile(parsed);
     if (!validation.ok) {
-      notify('error', `${file.name}: ${validation.reason}`);
+      notify('error', `${file.name}: ${translateError(validation.reason)}`);
       return;
     }
     const merged = mergePresets(state.presets, validation.presets);
@@ -190,7 +195,7 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
   const handleConfirmImport = () => {
     if (!pendingImport) return;
     dispatch({ type: 'replacePresets', presets: pendingImport.presets });
-    dispatch({ type: 'announce', message: `Imported presets: ${pendingImport.summary}.` });
+    dispatch({ type: 'announce', message: t.presets.imported(pendingImport.summary) });
     setPendingImport(null);
   };
 
@@ -207,13 +212,13 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
     <Dialog
       open={open}
       onClose={onClose}
-      title="Manage presets"
+      title={t.presets.title}
       footer={
         <>
           <Button onClick={() => fileInput.current?.click()} className="mr-auto">
-            Import…
+            {t.presets.import}
           </Button>
-          <Button onClick={handleExport}>{selected.size > 0 ? `Export ${selected.size} selected` : 'Export all'}</Button>
+          <Button onClick={handleExport}>{selected.size > 0 ? t.presets.exportSelected(selected.size) : t.presets.exportAll}</Button>
           <Button
             variant="primary"
             onClick={() => {
@@ -221,14 +226,14 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
               dispatch({ type: 'upsertPreset', preset });
             }}
           >
-            <Icon name="plus" /> New preset
+            <Icon name="plus" /> {t.presets.new}
           </Button>
           <input
             ref={fileInput}
             type="file"
             accept="application/json,.json"
             hidden
-            aria-label="Import presets file"
+            aria-label={t.presets.importFile}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = '';
@@ -240,24 +245,24 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
     >
       {pendingImport ? (
         <div role="alert" className="mb-4 rounded-md bg-success-bg p-3 text-[13px] text-success">
-          <p className="font-medium">Import: {pendingImport.summary}.</p>
+          <p className="font-medium">{t.presets.importSummary(pendingImport.summary)}</p>
           <div className="mt-2 flex gap-2">
             <Button size="sm" variant="primary" onClick={handleConfirmImport}>
-              Merge into my presets
+              {t.presets.merge}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPendingImport(null)}>
-              Cancel
+              {t.presets.cancel}
             </Button>
           </div>
         </div>
       ) : null}
 
       <h3 className={sectionLabelClass}>
-        Yours · <span className="font-mono">{state.presets.length}</span>
+        {t.presets.yours} · <span className="font-mono">{state.presets.length}</span>
       </h3>
       {state.presets.length === 0 ? (
         <p className="py-3 text-[13px] text-ink-3">
-          None yet. Duplicate a built-in, use “Save as new preset” in the settings panel, or import a file.
+          {t.presets.none}
         </p>
       ) : (
         <ul className="divide-y divide-line">
@@ -279,7 +284,7 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
                   next.delete(preset.id);
                   return next;
                 });
-                dispatch({ type: 'announce', message: `Deleted ${preset.name}.` });
+                dispatch({ type: 'announce', message: t.presets.deleted(preset.name) });
               }}
               onMove={(offset) => dispatch({ type: 'movePreset', id: preset.id, offset })}
               onShare={() => void handleShare(preset)}
@@ -288,7 +293,7 @@ export const PresetManagerDialog = ({ open, onClose }: PresetManagerDialogProps)
         </ul>
       )}
 
-      <h3 className={cn(sectionLabelClass, 'mt-5')}>Built-in · read-only</h3>
+      <h3 className={cn(sectionLabelClass, 'mt-5')}>{t.presets.builtIn}</h3>
       <ul className="divide-y divide-line">
         {BUILTIN_PRESETS.map((preset) => (
           <PresetRow
