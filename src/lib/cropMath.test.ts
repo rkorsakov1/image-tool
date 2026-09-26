@@ -118,6 +118,15 @@ describe('resolveOutputGeometry', () => {
     expect(geometry.upscaleCapped).toBe(false);
   });
 
+  it('free crop keeps its own shape and fits inside width × height', () => {
+    const free = { ...cover(1280, 720), fit: 'free' as const };
+    expect(targetAspect(free)).toBeNull();
+    const tall = resolveOutputGeometry({ width: 4000, height: 3000 }, { x: 0, y: 0, width: 1000, height: 2000 }, free);
+    expect([tall.outWidth, tall.outHeight]).toEqual([360, 720]);
+    const whole = resolveOutputGeometry({ width: 4000, height: 3000 }, null, free);
+    expect([whole.outWidth, whole.outHeight]).toEqual([960, 720]);
+  });
+
   it('derives height from width and crop aspect', () => {
     const geometry = resolveOutputGeometry({ width: 4000, height: 3000 }, null, cover(1600, null));
     expect([geometry.outWidth, geometry.outHeight]).toEqual([1600, 1200]);

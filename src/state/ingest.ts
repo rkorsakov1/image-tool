@@ -2,6 +2,7 @@
 
 import { decodeRaw, sniffFormat, svgIntrinsicSize, svgRasterSize, type SniffedKind } from '../lib/decoders';
 import type { RawImage } from '../lib/decoders/types';
+import { isZip, unzip } from '../lib/unzip';
 import { decodeHeif } from '../worker/heifClient';
 
 const IMAGE_EXTENSIONS = new Set([
@@ -9,8 +10,41 @@ const IMAGE_EXTENSIONS = new Set([
   'tif', 'tiff', 'tga', 'pbm', 'pgm', 'ppm', 'pnm', 'pam', 'qoi', 'heic', 'heif', 'jxl',
 ]);
 
-/** For <input type=file accept>: image/* alone hides .tga, .qoi, .pnm and (on some systems) .heic. */
-export const FILE_INPUT_ACCEPT = ['image/*', ...[...IMAGE_EXTENSIONS].map((extension) => `.${extension}`)].join(',');
+/** For <input type=file accept>: image/* alone hides .tga, .qoi, .pnm and (on some systems) .heic. ZIPs are unpacked. */
+export const FILE_INPUT_ACCEPT = ['image/*', ...[...IMAGE_EXTENSIONS].map((extension) => `.${extension}`), '.zip', 'application/zip'].join(',');
+
+const isZipName = (name: string, type = ''): boolean => extensionOf(name) === 'zip' || type === 'application/zip' || type === 'application/x-zip-compressed';
+
+type Incoming = File | { blob: Blob; name: string };
+
+/**
+ * Replaces ZIP files with the images inside them (natural path order, nested ZIPs one level deep).
+ * Anything that isn't an image is left out quietly.
+ */
+export const expandArchives = async (files: readonly Incoming[], depth = 0): Promise<{ files: Incoming[]; failures: DecodeFailure[] }> => {
+  const out: Incoming[] = [];
+  const failures: DecodeFailure[] = [];
+  for (const file of files) {
+    const blob = file instanceof File ? file : file.blob;
+    const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    if (!isZipName(file.name, blob.type) || !isZip(head)) {
+      out.push(file);
+      continue;
+    }
+    try {
+      const entries = await unzip(await blob.arrayBuffer(), (path) => IMAGE_EXTENSIONS.has(extensionOf(path)) || (depth === 0 && isZipName(path)));
+      entries.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+      const inner = entries.map((entry) => ({ blob: new Blob([entry.data as BlobPart]), name: entry.path.split('/').pop() ?? entry.path }));
+      const nested = await expandArchives(inner, depth + 1);
+      out.push(...nested.files);
+      failures.push(...nested.failures);
+      if (entries.length === 0) failures.push({ name: file.name, message: 'No images found in this ZIP.' });
+    } catch (error) {
+      failures.push({ name: file.name, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { files: out, failures };
+};
 
 /** Shown in the empty state. */
 export const SUPPORTED_FORMAT_LABELS = ['JPEG', 'PNG', 'WebP', 'AVIF', 'HEIC', 'GIF', 'TIFF', 'BMP', 'SVG', 'ICO', 'TGA', 'QOI', 'PNM'];
@@ -27,7 +61,7 @@ const extensionOf = (name: string): string => {
 
 /** Quick filter for folder contents: skips obvious non-images like .DS_Store or .txt. */
 export const looksLikeImageFile = (file: File): boolean =>
-  file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(extensionOf(file.name));
+  file.type.startsWith('image/') || IMAGE_EXTENSIONS.has(extensionOf(file.name)) || isZipName(file.name, file.type);
 
 const unsupportedMessage = (name: string, kind: SniffedKind): string => {
   if (kind === 'jxl') return 'JPEG XL can only be opened in Safari. Convert it to JPEG or PNG first, or use Safari.';

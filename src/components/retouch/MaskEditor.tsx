@@ -297,12 +297,12 @@ export const MaskEditor = ({ bitmap, transform, mask, variant, brush, onBrushCha
   );
 };
 
-/** The mask's alpha channel as one byte per pixel. */
-export const readMask = (mask: HTMLCanvasElement): Uint8Array => {
+/** The mask's alpha channel as one byte per pixel, for the whole mask or just `region`. */
+export const readMask = (mask: HTMLCanvasElement, region: Rect = { x: 0, y: 0, width: mask.width, height: mask.height }): Uint8Array => {
   const context = mask.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Canvas 2D is not available.');
-  const { data } = context.getImageData(0, 0, mask.width, mask.height);
-  const values = new Uint8Array(mask.width * mask.height);
+  const { data } = context.getImageData(region.x, region.y, region.width, region.height);
+  const values = new Uint8Array(region.width * region.height);
   for (let index = 0; index < values.length; index += 1) values[index] = data[index * 4 + 3] as number;
   return values;
 };

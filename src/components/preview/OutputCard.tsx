@@ -1,6 +1,7 @@
 import { cn } from '../../lib/cn';
 import { formatBytes, formatSavings, FORMAT_LABELS } from '../../lib/format';
 import type { Preset, QueueItem } from '../../lib/types';
+import { useApp } from '../../state/AppContext';
 import { sectionLabelClass } from '../ui/Button';
 import { Spinner } from '../ui/Icon';
 import { checkerboardClass } from './Checkerboard';
@@ -20,6 +21,7 @@ const outputStatus = (item: QueueItem | null): Status => {
 
 /** The real encoded output: thumbnail, exact size, dimensions, quality and savings. */
 export const OutputCard = ({ item, preset }: OutputCardProps) => {
+  const { outputFilename } = useApp();
   const output = item?.output ?? null;
   const stale = item !== null && item.outputRevision !== item.revision;
   const status = outputStatus(item);
@@ -50,6 +52,15 @@ export const OutputCard = ({ item, preset }: OutputCardProps) => {
             <img
               src={output.url}
               alt={`Encoded output preview, ${output.width} by ${output.height}`}
+              draggable={!stale}
+              title={stale ? undefined : 'Drag to your desktop or into another app'}
+              onDragStart={(event) => {
+                if (!item) return;
+                // Chromium turns this into a real file drop with the right name; other browsers drag the image.
+                const absolute = new URL(output.url, window.location.href).href;
+                event.dataTransfer.setData('DownloadURL', `${output.blob.type}:${outputFilename(item)}:${absolute}`);
+                event.dataTransfer.effectAllowed = 'copy';
+              }}
               className={cn('max-h-full max-w-full object-contain transition-opacity duration-300', { 'opacity-45': stale })}
             />
           ) : null}

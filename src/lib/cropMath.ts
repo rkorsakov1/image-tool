@@ -188,6 +188,11 @@ export const resolveOutputGeometry = (
   if (width && height && fit === 'cover') {
     requestedWidth = width;
     requestedHeight = height;
+  } else if (width && height && fit === 'free') {
+    // Free crop: keep the crop's own shape and fit it inside width × height.
+    const fitScale = Math.min(width / sourceRect.width, height / sourceRect.height);
+    requestedWidth = atLeastOne(sourceRect.width * fitScale);
+    requestedHeight = atLeastOne(sourceRect.height * fitScale);
   } else if (width) {
     requestedWidth = width;
     requestedHeight = atLeastOne((width * sourceRect.height) / sourceRect.width);

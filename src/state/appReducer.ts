@@ -5,7 +5,10 @@ import { EMPTY_HISTORY, type History } from './history';
 
 export type Mode = 'crop' | 'retouch' | 'background' | 'compare';
 
-export type Prefs = { showThirds: boolean };
+export type Theme = 'system' | 'light' | 'dark';
+
+/** `lifetime`: bytes saved and images exported across all sessions in this browser. */
+export type Prefs = { showThirds: boolean; theme: Theme; lifetime: { bytes: number; count: number } };
 
 export type Notice = {
   id: string;
@@ -276,14 +279,14 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
     case 'setPref':
       return { ...state, prefs: { ...state.prefs, ...action.patch } };
 
-    case 'addSavings':
+    case 'addSavings': {
+      const saved = Math.max(0, action.before - action.after);
       return {
         ...state,
-        savings: {
-          bytes: state.savings.bytes + Math.max(0, action.before - action.after),
-          count: state.savings.count + action.count,
-        },
+        savings: { bytes: state.savings.bytes + saved, count: state.savings.count + action.count },
+        prefs: { ...state.prefs, lifetime: { bytes: state.prefs.lifetime.bytes + saved, count: state.prefs.lifetime.count + action.count } },
       };
+    }
 
     case 'notify':
       return { ...state, notices: [...state.notices.slice(-4), action.notice], announcement: action.notice.message };

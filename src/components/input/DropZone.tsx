@@ -164,11 +164,11 @@ export const FilePickers = ({ variant = 'hero' }: FilePickersProps) => {
 export const EmptyDropZone = () => (
   <div className="relative flex min-h-[56vh] flex-1 items-center overflow-hidden rounded-lg bg-sunken bg-[radial-gradient(var(--color-dot)_1px,transparent_1px)] bg-size-[16px_16px] max-lg:rounded-none">
     <CropCorners motion="breathe" inset={24} />
-    <div className="mx-auto w-full max-w-xl px-10 py-16 max-lg:px-8">
-      <h2 className="text-[52px] leading-[1.02] font-[650] tracking-[-.035em] max-lg:text-[38px]">
-        Drop, paste, or pick images.
-        <br />
-        <span className="text-ink-3">Nothing leaves your device.</span>
+    <div className="mx-auto w-full max-w-[44rem] px-10 py-16 max-lg:px-8">
+      {/* Balanced wrapping: never a lone "images." or "device." on its own line. */}
+      <h2 className="text-[clamp(36px,4.4vw,52px)] leading-[1.04] font-[650] tracking-[-.035em] text-balance">
+        <span className="block">Drop, paste, or pick images.</span>
+        <span className="block text-ink-3">Nothing leaves your device.</span>
       </h2>
       <div className="mt-8 flex flex-wrap items-center gap-2">
         <FilePickers variant="hero" />
@@ -178,9 +178,17 @@ export const EmptyDropZone = () => (
         <span className="flex items-center gap-1.5 max-lg:hidden">
           <Keycap>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘V' : 'Ctrl V'}</Keycap> paste an image or URL
         </span>
-        <span>Folders work too</span>
-        <span className="font-mono">{SUPPORTED_FORMAT_LABELS.join(' · ')}</span>
+        <span>Folders and ZIP files work too</span>
       </p>
+      <ul aria-label="Supported formats" className="mt-2 flex flex-wrap gap-x-1.5 gap-y-1 font-mono text-xs text-ink-3">
+        {SUPPORTED_FORMAT_LABELS.map((label, index) => (
+          // The separator trails its item, so a line never starts with "·".
+          <li key={label} className="whitespace-nowrap">
+            {label}
+            {index < SUPPORTED_FORMAT_LABELS.length - 1 ? <span aria-hidden="true"> ·</span> : null}
+          </li>
+        ))}
+      </ul>
     </div>
   </div>
 );

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useScrollLock } from '../../hooks/useScrollLock';
 import { cn } from '../../lib/cn';
 import { Button } from './Button';
@@ -21,7 +21,6 @@ const SWIPE_CLOSE_PX = 80;
 export const Dialog = ({ open, onClose, title, children, footer, className, sheet = false }: DialogProps) => {
   const ref = useRef<HTMLDialogElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const swipe = useRef<{ pointerId: number; startY: number; dy: number } | null>(null);
   const titleId = useId();
   useScrollLock(open);
 
@@ -32,35 +31,65 @@ export const Dialog = ({ open, onClose, title, children, footer, className, shee
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  const setOffset = (dy: number) => {
+  // Swipe down to close (bottom sheet only). Native, non-passive touch listeners: React's touch
+  // handlers are passive, so they couldn't stop the sheet's content from scrolling instead.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const panel = panelRef.current;
     const dialog = ref.current;
-    if (!dialog) return;
-    dialog.style.translate = dy > 0 ? `0 ${dy}px` : '';
-    dialog.style.transition = dy > 0 ? 'none' : '';
-  };
-
-  const handleSwipeDown = (event: PointerEvent<HTMLElement>) => {
-    if (!sheet || event.pointerType === 'mouse') return;
-    // Only start from the grab area, or from the body when it's scrolled to the top.
-    const fromBody = bodyRef.current?.contains(event.target as Node) ?? false;
-    if (fromBody && (bodyRef.current?.scrollTop ?? 0) > 0) return;
-    swipe.current = { pointerId: event.pointerId, startY: event.clientY, dy: 0 };
-  };
-
-  const handleSwipeMove = (event: PointerEvent<HTMLElement>) => {
-    const current = swipe.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    current.dy = Math.max(0, event.clientY - current.startY);
-    if (current.dy > 6) setOffset(current.dy);
-  };
-
-  const handleSwipeEnd = (event: PointerEvent<HTMLElement>) => {
-    const current = swipe.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    swipe.current = null;
-    setOffset(0);
-    if (current.dy > SWIPE_CLOSE_PX) onClose();
-  };
+    if (!open || !sheet || !panel || !dialog) return;
+    let start: { y: number; time: number; fromBody: boolean } | null = null;
+    let dy = 0;
+    const setOffset = (offset: number, animate: boolean) => {
+      dialog.style.transition = animate ? 'translate .2s var(--ease-out)' : 'none';
+      dialog.style.translate = offset > 0 ? `0 ${offset}px` : '';
+    };
+    const handleStart = (event: TouchEvent) => {
+      if (event.touches.length !== 1 || window.matchMedia('(min-width: 1024px)').matches) return;
+      const body = bodyRef.current;
+      const fromBody = body?.contains(event.target as Node) ?? false;
+      start = { y: event.touches[0]?.clientY ?? 0, time: event.timeStamp, fromBody };
+      dy = 0;
+    };
+    const handleMove = (event: TouchEvent) => {
+      if (!start) return;
+      const next = (event.touches[0]?.clientY ?? 0) - start.y;
+      // From the content, only take over when it's scrolled to the top and the finger moves down.
+      if (start.fromBody && ((bodyRef.current?.scrollTop ?? 0) > 0 || (dy === 0 && next <= 0))) {
+        start = null;
+        return;
+      }
+      if (next <= 0 && dy === 0) return;
+      event.preventDefault();
+      dy = Math.max(0, next);
+      setOffset(dy, false);
+    };
+    const handleEnd = (event: TouchEvent) => {
+      if (!start) return;
+      const velocity = dy / Math.max(1, event.timeStamp - start.time);
+      start = null;
+      if (dy > SWIPE_CLOSE_PX || (dy > 30 && velocity > 0.5)) {
+        setOffset(0, false);
+        onCloseRef.current();
+      } else {
+        setOffset(0, true);
+      }
+      dy = 0;
+    };
+    panel.addEventListener('touchstart', handleStart, { passive: true });
+    panel.addEventListener('touchmove', handleMove, { passive: false });
+    panel.addEventListener('touchend', handleEnd);
+    panel.addEventListener('touchcancel', handleEnd);
+    return () => {
+      panel.removeEventListener('touchstart', handleStart);
+      panel.removeEventListener('touchmove', handleMove);
+      panel.removeEventListener('touchend', handleEnd);
+      panel.removeEventListener('touchcancel', handleEnd);
+      dialog.style.translate = '';
+    };
+  }, [open, sheet]);
 
   return (
     <dialog
@@ -86,15 +115,14 @@ export const Dialog = ({ open, onClose, title, children, footer, className, shee
       )}
     >
       {open ? (
-        <div
-          className={cn('flex max-h-[85dvh] flex-col', { 'max-lg:max-h-[calc(85dvh-var(--kb,0px))]': sheet })}
-          onPointerDown={handleSwipeDown}
-          onPointerMove={handleSwipeMove}
-          onPointerUp={handleSwipeEnd}
-          onPointerCancel={handleSwipeEnd}
-        >
-          {sheet ? <div aria-hidden="true" className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-line-strong lg:hidden" /> : null}
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-line pr-2 pl-5">
+        <div ref={panelRef} className={cn('flex max-h-[85dvh] flex-col', { 'max-lg:max-h-[calc(85dvh-var(--kb,0px))]': sheet })}>
+          {sheet ? (
+            // Grab handle: a tall, invisible touch area around the small visible bar.
+            <div aria-hidden="true" className="flex h-5 shrink-0 touch-none items-end justify-center lg:hidden">
+              <span className="h-1 w-9 rounded-full bg-line-strong" />
+            </div>
+          ) : null}
+          <header className={cn('flex h-14 shrink-0 items-center justify-between border-b border-line pr-2 pl-5', { 'max-lg:touch-none': sheet })}>
             <h2 id={titleId} className="text-base font-semibold">
               {title}
             </h2>

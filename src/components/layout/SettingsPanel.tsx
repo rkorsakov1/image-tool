@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { describeProgress, supportsDirectoryExport, useBatchExport } from '../../hooks/useBatchExport';
 import { cn } from '../../lib/cn';
 import { formatBytes } from '../../lib/format';
@@ -14,6 +14,8 @@ import { PresetManagerDialog } from '../presets/PresetManagerDialog';
 import { Button, focusRing } from '../ui/Button';
 import { inputClass } from '../ui/Field';
 import { Icon, Spinner } from '../ui/Icon';
+
+export const TOAST_ANCHOR_ID = 'toast-anchor';
 
 export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -178,7 +180,7 @@ export const SettingsForm = () => {
 };
 
 /** Copy as PNG, falling back to the share sheet where images can't go on the clipboard (iOS). */
-const useCopyOutput = () => {
+export const useCopyOutput = () => {
   const { notify, outputFilename } = useApp();
   return async (item: QueueItem) => {
     const output = item.output;
@@ -197,7 +199,8 @@ const useCopyOutput = () => {
         notify('info', 'This browser blocked copying the image. Share it instead, then choose Copy.', { label: 'Share', run: share });
         return;
       }
-      notify('error', error instanceof Error ? error.message : String(error));
+      notify('error', 'Couldn’t copy: the browser blocked access to the clipboard. Use Download instead.');
+      console.warn(error);
     }
   };
 };
@@ -206,6 +209,16 @@ const BatchExport = () => {
   const { state } = useApp();
   const { exportZip, exportToFolder, progress } = useBatchExport();
   const count = state.items.length;
+
+  // Show export progress in the tab title, so it's visible from another tab.
+  useEffect(() => {
+    if (!progress) return;
+    const original = document.title.replace(/^\(\d+\/\d+\) /, '');
+    document.title = `(${progress.done}/${progress.total}) ${original}`;
+    return () => {
+      document.title = original;
+    };
+  }, [progress]);
   if (count < 2) return null;
 
   if (progress) {
@@ -287,7 +300,9 @@ export const MobileDownloadBar = ({ onOpenSettings }: { onOpenSettings: () => vo
   const upToDate = output !== null && selectedItem.outputRevision === selectedItem.revision;
 
   return (
-    <div className="sticky bottom-0 z-20 flex items-center gap-2 border-t border-line bg-raised px-4 pt-2.5 pb-[max(.625rem,env(safe-area-inset-bottom))]">
+    <div className="sticky bottom-0 z-30 flex items-center gap-2 border-t border-line bg-raised px-4 pt-2.5 pb-[max(.625rem,env(safe-area-inset-bottom))]">
+      {/* Toasts render here on phones, so they always sit just above this bar (see Notices). */}
+      <div id={TOAST_ANCHOR_ID} className="pointer-events-none absolute inset-x-0 bottom-full" />
       <div className="min-w-0 flex-1">
         <p className={cn('font-mono text-lg leading-tight font-semibold', { 'text-ink-3': !upToDate })}>{output ? formatBytes(output.blob.size) : '—'}</p>
         <p className="truncate font-mono text-[11px] text-ink-3">

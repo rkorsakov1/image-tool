@@ -146,34 +146,52 @@ const downsample = (level: Level): Level => {
 /** Gauss–Seidel with over-relaxation on the unknown pixels; known pixels are fixed boundary values. */
 const relax = (level: Level, tolerance: number, maxIterations: number): number => {
   const { width, height, values, unknown } = level;
-  const cells: number[] = [];
-  for (let index = 0; index < unknown.length; index += 1) if (unknown[index]) cells.push(index);
+  // Precompute each unknown cell's neighbours once; the inner loop then does no allocation.
+  const cellList: number[] = [];
+  for (let index = 0; index < unknown.length; index += 1) if (unknown[index]) cellList.push(index);
+  const cells = Int32Array.from(cellList);
+  const neighbours = new Int32Array(cells.length * 4).fill(-1);
+  for (let cell = 0; cell < cells.length; cell += 1) {
+    const index = cells[cell] as number;
+    const x = index % width;
+    const y = (index - x) / width;
+    if (x > 0) neighbours[cell * 4] = index - 1;
+    if (x < width - 1) neighbours[cell * 4 + 1] = index + 1;
+    if (y > 0) neighbours[cell * 4 + 2] = index - width;
+    if (y < height - 1) neighbours[cell * 4 + 3] = index + width;
+  }
   const omega = 1.85;
   let iterations = 0;
   for (; iterations < maxIterations; iterations += 1) {
     let maxChange = 0;
-    for (const index of cells) {
-      const x = index % width;
-      const y = (index - x) / width;
-      let neighbours = 0;
-      const sums = [0, 0, 0, 0];
-      const add = (neighbour: number) => {
-        neighbours += 1;
-        for (let channel = 0; channel < CHANNELS; channel += 1) sums[channel]! += values[neighbour * CHANNELS + channel] as number;
-      };
-      if (x > 0) add(index - 1);
-      if (x < width - 1) add(index + 1);
-      if (y > 0) add(index - width);
-      if (y < height - 1) add(index + width);
-      if (neighbours === 0) continue;
-      for (let channel = 0; channel < CHANNELS; channel += 1) {
-        const offset = index * CHANNELS + channel;
-        const current = values[offset] as number;
-        const change = omega * ((sums[channel] as number) / neighbours - current);
-        values[offset] = current + change;
-        const magnitude = Math.abs(change);
-        if (magnitude > maxChange) maxChange = magnitude;
+    for (let cell = 0; cell < cells.length; cell += 1) {
+      let count = 0;
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let a = 0;
+      for (let side = 0; side < 4; side += 1) {
+        const neighbour = neighbours[cell * 4 + side] as number;
+        if (neighbour < 0) continue;
+        const offset = neighbour * CHANNELS;
+        r += values[offset] as number;
+        g += values[offset + 1] as number;
+        b += values[offset + 2] as number;
+        a += values[offset + 3] as number;
+        count += 1;
       }
+      if (count === 0) continue;
+      const offset = (cells[cell] as number) * CHANNELS;
+      const dr = omega * (r / count - (values[offset] as number));
+      const dg = omega * (g / count - (values[offset + 1] as number));
+      const db = omega * (b / count - (values[offset + 2] as number));
+      const da = omega * (a / count - (values[offset + 3] as number));
+      values[offset] = (values[offset] as number) + dr;
+      values[offset + 1] = (values[offset + 1] as number) + dg;
+      values[offset + 2] = (values[offset + 2] as number) + db;
+      values[offset + 3] = (values[offset + 3] as number) + da;
+      const change = Math.max(Math.abs(dr), Math.abs(dg), Math.abs(db), Math.abs(da));
+      if (change > maxChange) maxChange = change;
     }
     if (maxChange < tolerance) return iterations + 1;
   }

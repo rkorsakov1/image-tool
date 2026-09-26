@@ -7,13 +7,22 @@ export const STORAGE_KEY = 'localcrop:presets:v1';
 
 export type PersistedState = { presets: Preset[]; lastPresetId: string; prefs: Prefs };
 
-const DEFAULT_PREFS: Prefs = { showThirds: true };
+const DEFAULT_PREFS: Prefs = { showThirds: true, theme: 'system', lifetime: { bytes: 0, count: 0 } };
+
+const readLifetime = (raw: unknown): Prefs['lifetime'] => {
+  if (typeof raw !== 'object' || raw === null) return { bytes: 0, count: 0 };
+  const { bytes, count } = raw as Record<string, unknown>;
+  const valid = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0);
+  return { bytes: valid(bytes), count: valid(count) };
+};
 
 const readPrefs = (raw: unknown): Prefs => {
   if (typeof raw !== 'object' || raw === null) return DEFAULT_PREFS;
   const record = raw as Record<string, unknown>;
   return {
     showThirds: typeof record.showThirds === 'boolean' ? record.showThirds : DEFAULT_PREFS.showThirds,
+    theme: record.theme === 'light' || record.theme === 'dark' ? record.theme : 'system',
+    lifetime: readLifetime(record.lifetime),
   };
 };
 

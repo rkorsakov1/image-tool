@@ -209,12 +209,14 @@ export const runEncodeJob = async (job: EncodeJob, env: CanvasEnv, checkpoint: C
 
 /** Object removal: fills the masked pixels and returns the edited image. */
 export const runFillJob = async (job: FillJob, env: CanvasEnv): Promise<FillResult> => {
-  const { width, height } = job.bitmap;
+  const region = job.region ?? { x: 0, y: 0, width: job.bitmap.width, height: job.bitmap.height };
+  const { width, height } = region;
   if (job.mask.length !== width * height) throw new Error('The mask does not match the image size.');
-  const canvas = env.create(width, height);
+  const canvas = env.create(job.bitmap.width, job.bitmap.height);
   const context = get2d(canvas, { willReadFrequently: true });
   context.drawImage(job.bitmap, 0, 0);
-  const pixels = context.getImageData(0, 0, width, height);
+  // Only the stroke's neighbourhood is read and written: a stroke on a 12 MP photo stays fast.
+  const pixels = context.getImageData(region.x, region.y, width, height);
 
   let color: [number, number, number] | null = null;
   if (job.method === 'flat') {
@@ -225,7 +227,7 @@ export const runFillJob = async (job: FillJob, env: CanvasEnv): Promise<FillResu
     throw new Error('Nothing to fill: paint over the object first, leaving some background around it.');
   }
 
-  context.putImageData(pixels, 0, 0);
+  context.putImageData(pixels, region.x, region.y);
   const bitmap = await env.toBitmap(canvas);
   return { bitmap, color };
 };

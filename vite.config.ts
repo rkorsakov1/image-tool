@@ -18,6 +18,7 @@ const fnv1a = (text: string): string => {
 /** Files from public/ that the service worker precaches (small ones only; see src/pwa/serviceWorker.ts). */
 const PUBLIC_PRECACHE = [
   'favicon.svg',
+  'theme.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',

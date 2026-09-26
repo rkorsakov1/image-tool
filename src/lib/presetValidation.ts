@@ -8,7 +8,7 @@ const MAX_NAME_LENGTH = 80;
 const MAX_TEMPLATE_LENGTH = 200;
 
 const FORMATS: readonly OutputFormat[] = ['jpeg', 'webp', 'avif', 'png'];
-const FITS: readonly FitMode[] = ['cover', 'contain'];
+const FITS: readonly FitMode[] = ['cover', 'contain', 'free'];
 
 export type PresetValidation =
   | { ok: true; preset: Preset; repairs: string[] }

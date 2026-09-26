@@ -88,7 +88,7 @@ const ProgressCard = ({ progress }: { progress: SegmentProgress }) => {
 
 /** Background mode: segment with the on-device model; the cut-out is applied at once, and each Restore/Erase stroke updates it. */
 export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
-  const { state, dispatch, processor, notify, setEdit } = useApp();
+  const { state, dispatch, editor, notify, setEdit } = useApp();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const cutout = item.cutout;
   const [progress, setProgress] = useState<SegmentProgress | null>(null);
@@ -124,12 +124,13 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
   useEffect(() => () => releaseSegmenter(), []);
 
   /** Composes `base` with the mask and stores it as one undoable step. */
-  const commit = async (next: Omit<Cutout, 'mask'>, maskCanvas: HTMLCanvasElement, mergeKey?: string) => {
+  /** `workingCanvas`: the on-screen mask canvas this result belongs to (it may already hold newer strokes). */
+  const commit = async (next: Omit<Cutout, 'mask'>, maskCanvas: HTMLCanvasElement, mergeKey?: string, workingCanvas: HTMLCanvasElement = maskCanvas) => {
     const [maskBitmap, composed] = await Promise.all([
       createImageBitmap(maskCanvas),
-      processor.compose({ bitmap: next.base, alpha: readMask(maskCanvas), background: next.background }),
+      editor.compose({ bitmap: next.base, alpha: readMask(maskCanvas), background: next.background }),
     ]);
-    synced.current = { canvas: maskCanvas, bitmap: maskBitmap };
+    synced.current = { canvas: workingCanvas, bitmap: maskBitmap };
     setEdit(item.id, composed.bitmap, { ...next, mask: maskBitmap }, mergeKey);
   };
 
@@ -148,16 +149,38 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
     }
   };
 
-  const handleStrokeEnd = async () => {
-    if (!cutout || !mask) return;
+  // Painting never waits: each finished stroke snapshots the mask and joins a queue, so every
+  // stroke still becomes its own undo step.
+  const strokeQueue = useRef<Promise<ImageBitmap>[]>([]);
+  const draining = useRef(false);
+
+  const drainStrokes = async (base: Omit<Cutout, 'mask'>) => {
+    if (draining.current || !mask) return;
+    draining.current = true;
     setBusy(true);
     try {
-      await commit(cutout, mask);
-    } catch (error) {
-      notify('error', error instanceof Error ? error.message : String(error));
+      for (let next = strokeQueue.current.shift(); next; next = strokeQueue.current.shift()) {
+        const snapshot = await next;
+        const canvas = createMaskCanvas(snapshot.width, snapshot.height);
+        canvas.getContext('2d')?.drawImage(snapshot, 0, 0);
+        snapshot.close();
+        try {
+          await commit(base, canvas, undefined, mask);
+        } catch (error) {
+          notify('error', error instanceof Error ? error.message : String(error));
+        }
+      }
     } finally {
+      draining.current = false;
       setBusy(false);
     }
+  };
+
+  const handleStrokeEnd = () => {
+    if (!cutout || !mask) return;
+    // createImageBitmap copies the canvas as it is right now, before later strokes land on it.
+    strokeQueue.current.push(createImageBitmap(mask));
+    void drainStrokes({ base: cutout.base, background: cutout.background, provider: cutout.provider });
   };
 
   const setBackground = (background: string | null) => {
@@ -195,9 +218,12 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
         </Toolbar>
       ) : (
         <Toolbar label="Background">
-          <span className="text-xs text-ink-2">Cut out the subject with an on-device model. The brushes appear after it runs.</span>
+          <Button variant="primary" size="sm" disabled={progress !== null} aria-busy={progress !== null} onClick={() => void handleRemove()}>
+            {progress ? <Spinner /> : <Icon name="spark" />} Remove background
+          </Button>
+          <span className="ml-2 text-xs text-ink-2 max-lg:hidden">Cuts out the subject on this device. Restore and Erase brushes appear after it runs.</span>
           <span className="min-w-4 flex-1" />
-          <span className="font-mono text-[11px] text-ink-3 max-lg:hidden">{SEGMENTATION_MODEL.label}</span>
+          <span className="font-mono text-[11px] text-ink-3 max-2xl:hidden">{SEGMENTATION_MODEL.label}</span>
         </Toolbar>
       )}
 
@@ -213,8 +239,7 @@ export const BackgroundPanel = ({ item }: { item: QueueItem }) => {
               brush={brush}
               onBrushChange={setBrush}
               version={version}
-              onStrokeEnd={() => void handleStrokeEnd()}
-              disabled={busy}
+              onStrokeEnd={handleStrokeEnd}
               label="Background cut-out"
             />
             <HintChip tone={busy ? 'busy' : 'neutral'}>

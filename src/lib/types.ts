@@ -1,5 +1,6 @@
 export type OutputFormat = 'jpeg' | 'webp' | 'avif' | 'png';
-export type FitMode = 'cover' | 'contain';
+/** cover = crop to the exact size; contain = fit and pad; free = any crop shape, scaled to fit within width × height. */
+export type FitMode = 'cover' | 'contain' | 'free';
 
 export type Preset = {
   id: string;
@@ -8,7 +9,7 @@ export type Preset = {
   width: number | null;
   /** null = derive from width + source aspect; both null = original size */
   height: number | null;
-  /** cover = crop to fill; contain = fit whole image and pad */
+  /** cover = crop to fill; contain = fit whole image and pad; free = unlocked crop that fits within the size */
   fit: FitMode;
   format: OutputFormat;
   /** 0–100; ignored for png */

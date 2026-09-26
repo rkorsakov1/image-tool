@@ -7,6 +7,7 @@ const MOD = IS_MAC ? '⌘' : 'Ctrl';
 const SHORTCUTS: [string[][], string][] = [
   [[[MOD, 'V']], 'Paste image or URL'],
   [[[MOD, 'S'], ['Enter']], 'Download output'],
+  [[[MOD, '⇧', 'C']], 'Copy output'],
   [[['N'], ['P']], 'Next / previous image'],
   [[['C'], ['E'], ['B'], ['V']], 'Crop · Retouch · Background · Compare'],
   [[['R']], 'Reset crop'],

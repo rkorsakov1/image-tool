@@ -29,8 +29,8 @@ type AnyResult = EncodeResult | FillResult | ComposeResult | ZipResult;
 type Pending = { resolve: (result: AnyResult) => void; reject: (error: Error) => void };
 
 
-const createWorkerProcessor = (): Processor => {
-  const worker = new Worker(new URL('./processor.worker.ts', import.meta.url), { type: 'module', name: 'processor' });
+const createWorkerProcessor = (name: string): Processor => {
+  const worker = new Worker(new URL('./processor.worker.ts', import.meta.url), { type: 'module', name });
   const pending = new Map<number, Pending>();
   let nextId = 1;
 
@@ -129,5 +129,6 @@ const createMainThreadProcessor = (): Processor => {
   };
 };
 
-export const createWorkerClient = (): Processor =>
-  supportsOffscreen2d() ? createWorkerProcessor() : createMainThreadProcessor();
+/** `name` labels the worker in devtools. Retouch uses its own instance so strokes never wait behind an encode. */
+export const createWorkerClient = (name = 'processor'): Processor =>
+  supportsOffscreen2d() ? createWorkerProcessor(name) : createMainThreadProcessor();

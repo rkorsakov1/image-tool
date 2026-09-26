@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 export type ShortcutHandlers = {
   download?: () => void;
+  copy?: () => void;
   next?: () => void;
   previous?: () => void;
   resetCrop?: () => void;
@@ -49,6 +50,11 @@ export const useKeyboardShortcuts = (handlers: ShortcutHandlers): void => {
       if (modifier && key === 's') {
         event.preventDefault();
         current.download?.();
+        return;
+      }
+      if (modifier && event.shiftKey && key === 'c' && !window.getSelection()?.toString()) {
+        event.preventDefault();
+        current.copy?.();
         return;
       }
       if (modifier || event.altKey) return;

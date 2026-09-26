@@ -5,13 +5,15 @@ import type { Cutout, EncodedOutput, QueueItem } from '../lib/types';
 import { createWorkerClient, type Processor } from '../worker/workerClient';
 import { appReducer, createInitialState, getItemPreset, type AppAction, type AppState, type Notice } from './appReducer';
 import { snapshotBitmaps, snapshotOf, withHistory, type HistoryAction } from './history';
-import { decodeImage, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
+import { decodeImage, expandArchives, LARGE_IMAGE_PIXELS, type DecodeFailure } from './ingest';
 import { loadPersistedState, savePersistedState } from './storage';
 
 type AppContextValue = {
   state: AppState;
   dispatch: (action: AppAction | HistoryAction) => void;
   processor: Processor;
+  /** A second worker for retouch fills and cut-out composing, so brush strokes don't queue behind preview encodes. */
+  editor: Processor;
   selectedItem: QueueItem | null;
   addFiles: (files: readonly (File | { blob: Blob; name: string })[]) => Promise<void>;
   removeItem: (id: string) => void;
@@ -56,6 +58,7 @@ export const triggerDownload = (blob: Blob, filename: string): void => {
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [state, dispatch] = useReducer(historyReducer, undefined, () => createInitialState(loadPersistedState()));
   const processor = useMemo(() => createWorkerClient(), []);
+  const editor = useMemo(() => createWorkerClient('editor'), []);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -84,8 +87,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const addFiles = useCallback<AppContextValue['addFiles']>(
-    async (files) => {
-      const failures: DecodeFailure[] = [];
+    async (incoming) => {
+      const expanded = await expandArchives(incoming);
+      const files = expanded.files;
+      const failures: DecodeFailure[] = [...expanded.failures];
       const decoded = await Promise.all(
         files.map(async (file) => {
           const blob = file instanceof File ? file : file.blob;
@@ -164,8 +169,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const selectedItem = state.items.find((item) => item.id === state.selectedId) ?? null;
 
   const value = useMemo<AppContextValue>(
-    () => ({ state, dispatch, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit }),
-    [state, processor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit],
+    () => ({ state, dispatch, processor, editor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit }),
+    [state, processor, editor, selectedItem, addFiles, removeItem, notify, outputFilename, downloadItem, setEdit],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

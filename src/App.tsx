@@ -3,8 +3,9 @@ import { CanvasArea, MODES, UndoRedo } from './components/layout/CanvasArea';
 import { Footer } from './components/layout/Footer';
 import { Notices } from './components/layout/Notices';
 import { MobileQueueStrip, QueuePanel } from './components/layout/QueuePanel';
-import { MobileDownloadBar, OutputDock, SettingsForm } from './components/layout/SettingsPanel';
+import { MobileDownloadBar, OutputDock, SettingsForm, useCopyOutput } from './components/layout/SettingsPanel';
 import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
+import { ThemeToggle, useApplyTheme } from './components/layout/ThemeToggle';
 import { FilePickers, WindowDropTarget } from './components/input/DropZone';
 import { PasteListener } from './components/input/PasteListener';
 import { UrlInput } from './components/input/UrlInput';
@@ -38,15 +39,20 @@ const Shell = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   useKeyboardInset();
   useHistoryShortcuts(dispatch);
+  useApplyTheme(state.prefs.theme);
 
   useEffect(() => {
     registerServiceWorker((activate) => notify('info', 'A new version of LocalCrop is available.', { label: 'Reload', run: activate }, true));
     consumeLaunchedFiles((files) => void addFiles(files));
   }, [addFiles, notify]);
 
+  const copyOutput = useCopyOutput();
   useKeyboardShortcuts({
     download: () => {
       if (selectedItem) downloadItem(selectedItem);
+    },
+    copy: () => {
+      if (selectedItem?.output && selectedItem.outputRevision === selectedItem.revision) void copyOutput(selectedItem);
     },
     next: () => dispatch({ type: 'selectRelative', offset: 1 }),
     previous: () => dispatch({ type: 'selectRelative', offset: -1 }),
@@ -76,6 +82,7 @@ const Shell = () => {
             <FilePickers variant={desktop ? 'header' : 'icons'} />
           </div>
         ) : null}
+        <ThemeToggle />
       </header>
 
       {desktop ? (

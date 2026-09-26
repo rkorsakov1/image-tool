@@ -27,8 +27,10 @@ export type FillMethod = 'flat' | 'smooth';
 export type FillJob = {
   /** The image to edit, in source orientation (before rotate/flip). */
   bitmap: ImageBitmap;
-  /** One byte per source pixel: 0 = keep, 255 = fill, in between = soft edge. Transferred. */
+  /** One byte per pixel of `region` (or of the whole image): 0 = keep, 255 = fill, in between = soft edge. Transferred. */
   mask: Uint8Array;
+  /** Only this part of the image is read, filled and written back (a stroke plus a margin). Default: everything. */
+  region?: { x: number; y: number; width: number; height: number };
   method: FillMethod;
   /** Flat fill color; null = per-channel median of a 4 px ring around the mask. */
   color: [number, number, number] | null;

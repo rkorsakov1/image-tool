@@ -134,6 +134,7 @@ const summaryParts = (preset: Preset): string[] => [
 export const PresetForm = ({ preset, item, queueLength, onChange }: PresetFormProps) => {
   const isPng = preset.format === 'png';
   const bothDimensions = preset.width !== null && preset.height !== null;
+  const free = bothDimensions && preset.fit === 'free';
 
   return (
     <div className="space-y-5">
@@ -141,20 +142,43 @@ export const PresetForm = ({ preset, item, queueLength, onChange }: PresetFormPr
         <h3 id="size-heading" className={sectionLabelClass}>
           Size &amp; fit
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <NumberField label="Width" prefix="W" suffix="px" value={preset.width} onChange={(width) => onChange({ width })} />
-          <Icon name="link" className="size-4 shrink-0 text-ink-3" />
+          <button
+            type="button"
+            aria-pressed={bothDimensions && !free}
+            disabled={!bothDimensions}
+            onClick={() => onChange({ fit: free ? 'cover' : 'free' })}
+            aria-label={free ? 'Lock the crop to the width and height ratio' : 'Unlock the ratio for a free-form crop'}
+            title={free ? 'Aspect unlocked: free-form crop. Click to lock.' : 'Aspect locked. Click to unlock for a free-form crop.'}
+            className={cn(
+              'flex size-8 shrink-0 items-center justify-center rounded-md text-ink-3 hover:bg-sunken hover:text-ink disabled:opacity-45 max-lg:size-11',
+              'aria-pressed:text-ink',
+              focusRing,
+            )}
+          >
+            <Icon name={free ? 'unlink' : 'link'} />
+          </button>
           <NumberField label="Height" prefix="H" suffix="px" value={preset.height} onChange={(height) => onChange({ height })} />
         </div>
-        <Segmented<FitMode>
-          label="Fit"
-          value={preset.fit}
-          options={FIT_OPTIONS}
-          onChange={(fit) => onChange({ fit })}
-          disabled={!bothDimensions}
-          className="flex w-full"
-        />
-        {!bothDimensions ? <p className="text-xs text-ink-3">Leave one side empty to keep the aspect ratio, both empty for the original size.</p> : null}
+        {free ? (
+          <p className="flex min-h-9 items-center rounded-[9px] bg-sunken px-3 text-xs text-ink-2 max-lg:min-h-11">
+            Free-form crop · the output fits within{' '}
+            <span className="ml-1 font-mono">
+              {preset.width} × {preset.height}
+            </span>
+          </p>
+        ) : (
+          <Segmented<FitMode>
+            label="Fit"
+            value={preset.fit}
+            options={FIT_OPTIONS}
+            onChange={(fit) => onChange({ fit })}
+            disabled={!bothDimensions}
+            className="flex w-full"
+          />
+        )}
+        {!bothDimensions ? <p className="text-xs text-ink-3">Leave one side empty to keep the aspect ratio, both empty for the original size. The crop is free-form.</p> : null}
       </section>
 
       <section aria-labelledby="format-heading" className="space-y-2.5">

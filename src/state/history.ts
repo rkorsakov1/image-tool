@@ -144,6 +144,8 @@ export const withHistory =
       const restored = restore(state, previous);
       return {
         ...restored,
+        // An "Undo" button in a toast is spent once the step is undone.
+        notices: restored.notices.filter((notice) => notice.action?.label !== 'Undo'),
         history: { past: history.past.slice(0, -1), future: [...history.future, snapshotOf(state)], lastKey: null, lastAt: 0 },
         announcement: 'Undone.',
       };

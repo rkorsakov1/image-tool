@@ -1,9 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { cn } from '../../lib/cn';
 import type { Notice } from '../../state/appReducer';
 import { useApp } from '../../state/AppContext';
 import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
+import { TOAST_ANCHOR_ID } from './SettingsPanel';
 
 const AUTO_DISMISS_MS = 6000;
 
@@ -25,18 +28,30 @@ export const Notices = () => {
     return () => timers.forEach(clearTimeout);
   }, [state.notices, dispatch]);
 
-  return (
-    <>
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        {state.announcement}
-      </div>
-      <div
-        className={cn(
-          'pointer-events-none fixed z-40 flex flex-col gap-2',
-          // Desktop: bottom-right above the footer, left of the settings column. Mobile: above the download bar.
-          'right-[calc(340px+1rem)] bottom-12 w-[360px] max-lg:inset-x-4 max-lg:right-4 max-lg:bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-lg:w-auto',
-        )}
-      >
+  // Phones: attach to the sticky Download bar when it's there, so toasts never hide behind it.
+  const desktop = useIsDesktop();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (desktop) {
+      setAnchor(null);
+      return;
+    }
+    const find = () => setAnchor(document.getElementById(TOAST_ANCHOR_ID));
+    find();
+    const observer = new MutationObserver(find);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [desktop]);
+
+  const stack = (
+    <div
+      className={cn('pointer-events-none z-40 flex flex-col gap-2', {
+        // Desktop: bottom-right above the footer, left of the settings column.
+        'fixed right-[calc(340px+1rem)] bottom-12 w-[360px]': desktop,
+        'absolute inset-x-4 bottom-2': !desktop && anchor !== null,
+        'fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))]': !desktop && !anchor,
+      })}
+    >
         {state.notices.map((notice) => {
           const kind = KIND[notice.tone];
           return (
@@ -76,7 +91,15 @@ export const Notices = () => {
             </div>
           );
         })}
+    </div>
+  );
+
+  return (
+    <>
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {state.announcement}
       </div>
+      {anchor ? createPortal(stack, anchor) : stack}
     </>
   );
 };

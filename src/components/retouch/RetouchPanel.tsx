@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Point } from '../../lib/cropMath';
 import type { Rect } from '../../lib/inpaint';
 import type { QueueItem } from '../../lib/types';
@@ -12,6 +12,9 @@ import { BrushToolbar } from './BrushToolbar';
 import { createMaskCanvas, defaultBrushSize, MaskEditor, readMask, type BrushSettings } from './MaskEditor';
 
 type RGB = [number, number, number];
+
+/** A finished stroke waiting to be applied: its mask pixels are copied when it ends. */
+type Stroke = { region: Rect; values: Uint8Array; erase: boolean; method: FillMethod; color: RGB | null };
 
 const toHex = ([r, g, b]: RGB): string => `#${[r, g, b].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 
@@ -35,27 +38,56 @@ const sampleColor = (bitmap: ImageBitmap, point: Point): RGB | null => {
   return [r, g, b];
 };
 
-/** Paints the original pixels back where the mask is set. */
-const restoreOriginal = async (current: ImageBitmap, original: ImageBitmap, mask: HTMLCanvasElement): Promise<ImageBitmap> => {
+/** A canvas whose alpha is `values` over `region` (white elsewhere is irrelevant). */
+const maskPatch = (region: Rect, values: Uint8Array): HTMLCanvasElement => {
   const patch = document.createElement('canvas');
-  patch.width = current.width;
-  patch.height = current.height;
+  patch.width = region.width;
+  patch.height = region.height;
+  const context = patch.getContext('2d');
+  if (!context) throw new Error('Canvas 2D is not available.');
+  const pixels = context.createImageData(region.width, region.height);
+  for (let index = 0; index < values.length; index += 1) {
+    pixels.data[index * 4] = 255;
+    pixels.data[index * 4 + 1] = 255;
+    pixels.data[index * 4 + 2] = 255;
+    pixels.data[index * 4 + 3] = values[index] as number;
+  }
+  context.putImageData(pixels, 0, 0);
+  return patch;
+};
+
+/** Paints the original pixels back where the stroke's mask is set. */
+const restoreOriginal = async (current: ImageBitmap, original: ImageBitmap, region: Rect, values: Uint8Array): Promise<ImageBitmap> => {
+  const strokeMask = maskPatch(region, values);
+  const patch = document.createElement('canvas');
+  patch.width = region.width;
+  patch.height = region.height;
   const patchContext = patch.getContext('2d');
   const canvas = document.createElement('canvas');
   canvas.width = current.width;
   canvas.height = current.height;
   const context = canvas.getContext('2d');
   if (!patchContext || !context) throw new Error('Canvas 2D is not available.');
-  patchContext.drawImage(original, 0, 0);
+  patchContext.drawImage(original, -region.x, -region.y);
   patchContext.globalCompositeOperation = 'destination-in';
-  patchContext.drawImage(mask, 0, 0);
+  patchContext.drawImage(strokeMask, 0, 0);
   context.drawImage(current, 0, 0);
   // Clear under the patch first, so restoring over transparency (a removed background) works too.
   context.globalCompositeOperation = 'destination-out';
-  context.drawImage(mask, 0, 0);
+  context.drawImage(strokeMask, region.x, region.y);
   context.globalCompositeOperation = 'source-over';
-  context.drawImage(patch, 0, 0);
+  context.drawImage(patch, region.x, region.y);
   return createImageBitmap(canvas);
+};
+
+/** The stroke's box plus a margin of surrounding pixels to fill from (whole pixels, inside the image). */
+const STROKE_MARGIN = 12;
+const strokeRegion = (rect: Rect, image: { width: number; height: number }): Rect => {
+  const x = Math.max(0, Math.floor(rect.x - STROKE_MARGIN));
+  const y = Math.max(0, Math.floor(rect.y - STROKE_MARGIN));
+  const right = Math.min(image.width, Math.ceil(rect.x + rect.width + STROKE_MARGIN));
+  const bottom = Math.min(image.height, Math.ceil(rect.y + rect.height + STROKE_MARGIN));
+  return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
 };
 
 const METHOD_OPTIONS: { value: FillMethod; label: string; title: string }[] = [
@@ -65,7 +97,7 @@ const METHOD_OPTIONS: { value: FillMethod; label: string; title: string }[] = [
 
 /** Retouch mode: every stroke is filled from its surroundings as soon as it ends. Each stroke is one undo step. */
 export const RetouchPanel = ({ item }: { item: QueueItem }) => {
-  const { processor, notify, dispatch, setEdit } = useApp();
+  const { editor, notify, dispatch, setEdit } = useApp();
   const bitmap = item.editedBitmap ?? item.sourceBitmap;
   const mask = useMemo(() => createMaskCanvas(bitmap.width, bitmap.height), [bitmap.width, bitmap.height]);
   const [version, setVersion] = useState(0);
@@ -74,11 +106,31 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
   const [flatColor, setFlatColor] = useState<RGB | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Only mention the work if it takes long enough to notice; quick strokes shouldn't flicker the hint.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!busy) {
+      setSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), 400);
+    return () => clearTimeout(timer);
+  }, [busy]);
   const canRestore = item.editedBitmap !== null;
   const effectiveBrush = canRestore ? brush : { ...brush, erase: false };
 
-  // A new image (after a fill, undo or redo) starts with an empty mask; the finished stroke vanishes with it.
+  // Strokes are applied one after another. Painting never waits: a stroke that ends while the
+  // previous one is still filling joins the queue and stays visible in the mask until it's done.
+  const queue = useRef<Stroke[]>([]);
+  const running = useRef(false);
+  /** The newest image, including results React hasn't rendered yet. */
+  const latest = useRef(bitmap);
+  const ownResult = useRef<ImageBitmap | null>(null);
+
+  // A new image from outside (undo, redo, another tool) starts with an empty mask.
   useEffect(() => {
+    latest.current = bitmap;
+    if (bitmap === ownResult.current || running.current) return;
     mask.getContext('2d')?.clearRect(0, 0, mask.width, mask.height);
     setVersion((value) => value + 1);
   }, [bitmap, mask]);
@@ -91,30 +143,61 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
     dispatch({ type: 'announce', message: `Fill color set to ${toHex(color)}.` });
   };
 
-  const clearMask = () => {
-    mask.getContext('2d')?.clearRect(0, 0, mask.width, mask.height);
+  /** Removes a finished stroke from the mask (only its own pixels; later strokes stay). */
+  const eraseFromMask = (stroke: Stroke) => {
+    const context = mask.getContext('2d');
+    if (!context) return;
+    context.globalCompositeOperation = 'destination-out';
+    context.drawImage(maskPatch(stroke.region, stroke.values), stroke.region.x, stroke.region.y);
+    context.globalCompositeOperation = 'source-over';
     setVersion((value) => value + 1);
   };
 
-  const handleStrokeEnd = async (_rect: Rect) => {
+  const applyStroke = async (stroke: Stroke): Promise<void> => {
+    const current = latest.current;
+    let next: ImageBitmap;
+    if (stroke.erase) {
+      next = await restoreOriginal(current, item.sourceBitmap, stroke.region, stroke.values);
+    } else {
+      const result = await editor.fill({ bitmap: current, mask: stroke.values.slice(), region: stroke.region, method: stroke.method, color: stroke.color });
+      next = result.bitmap;
+      if (result.color && stroke.method === 'flat' && !flatColor) setFlatColor(result.color);
+    }
+    latest.current = next;
+    ownResult.current = next;
+    setEdit(item.id, next);
+  };
+
+  const drainQueue = async () => {
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     try {
-      if (effectiveBrush.erase) {
-        setEdit(item.id, await restoreOriginal(bitmap, item.sourceBitmap, mask));
-        dispatch({ type: 'announce', message: 'Original restored under the stroke.' });
-        return;
+      for (let stroke = queue.current.shift(); stroke; stroke = queue.current.shift()) {
+        try {
+          await applyStroke(stroke);
+        } catch (error) {
+          notify('error', error instanceof Error ? error.message : String(error));
+        }
+        eraseFromMask(stroke);
       }
-      const values = readMask(mask);
-      const result = await processor.fill({ bitmap, mask: values, method, color: method === 'flat' ? flatColor : null });
-      setEdit(item.id, result.bitmap);
-      if (result.color && method === 'flat' && !flatColor) setFlatColor(result.color);
-      dispatch({ type: 'announce', message: 'Stroke filled.' });
-    } catch (error) {
-      clearMask();
-      notify('error', error instanceof Error ? error.message : String(error));
+      dispatch({ type: 'announce', message: 'Strokes applied.' });
     } finally {
+      running.current = false;
       setBusy(false);
     }
+  };
+
+  const handleStrokeEnd = (rect: Rect) => {
+    const region = strokeRegion(rect, bitmap);
+    queue.current.push({
+      region,
+      values: readMask(mask, region),
+      erase: effectiveBrush.erase,
+      method,
+      color: method === 'flat' ? flatColor : null,
+    });
+    void drainQueue();
   };
 
   return (
@@ -153,15 +236,14 @@ export const RetouchPanel = ({ item }: { item: QueueItem }) => {
           brush={effectiveBrush}
           onBrushChange={setBrush}
           version={version}
-          onStrokeEnd={(rect) => void handleStrokeEnd(rect)}
-          disabled={busy}
+          onStrokeEnd={handleStrokeEnd}
           onPick={picking ? handlePick : undefined}
           label="Retouch brush"
         />
-        {busy ? (
+        {slow ? (
           <HintChip tone="busy">
             <span className="flex items-center gap-2">
-              <Spinner /> {effectiveBrush.erase ? 'Restoring…' : 'Filling…'}
+              <Spinner /> Applying strokes…
             </span>
           </HintChip>
         ) : (
