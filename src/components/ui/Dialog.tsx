@@ -104,6 +104,12 @@ export const Dialog = ({ open, onClose, title, children, footer, className, shee
           </header>
           <div
             ref={bodyRef}
+            // On phones, keep the focused field visible once the on-screen keyboard has opened.
+            onFocus={(event) => {
+              const target = event.target;
+              if (!sheet || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+              setTimeout(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350);
+            }}
             className={cn('overflow-y-auto overscroll-contain px-5 py-4 [-webkit-overflow-scrolling:touch]', {
               'max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]': sheet && !footer,
             })}
