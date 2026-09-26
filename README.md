@@ -1,23 +1,51 @@
+<div align="center">
+
 # LocalCrop
 
-A client-side tool for cropping, resizing, compressing and retouching images. Everything runs in your browser, and images never leave your device.
+**Crop, resize, compress, convert and retouch images, entirely in your browser.**<br>
+Nothing is uploaded: your images never leave your device.
 
-**Live:** https://rkorsakov1.github.io/localcrop/
+[**Open LocalCrop →**](https://rkorsakov1.github.io/localcrop/)
 
-- **Input:** drop files or whole folders, pick files or a folder, paste an image (or an image URL) with Ctrl/Cmd+V, or fetch a URL.
-- **Formats in:** JPEG, PNG, WebP, AVIF, GIF, BMP and ICO through the browser; HEIC/HEIF (natively in Safari, elsewhere via a vendored libheif), TIFF, SVG, TGA, PNM and QOI through bundled decoders. So it also works as a converter: pick “Original size (convert only)” and a format.
-- **Presets:** YouTube thumbnail, Open Graph, 16:9 Full HD, 1:1 square, 4:5 portrait, 9:16 story and original size, plus your own. They're saved in the browser, export/import as JSON, and can be shared as a link (`#preset=…`).
-- **Crop:** aspect-locked crop box (mouse or keyboard), rule of thirds, rotate/flip, fit-and-pad ("contain"), and an upscale guard.
-- **Honest preview:** the output card shows the real encoded file, so the size you see is exactly what you download. Compare view has a before/after slider, zoom and pan.
-- **Encoders:** MozJPEG, libwebp, AVIF (libaom) and OxiPNG compiled to WebAssembly. Target-size mode finds the highest quality under e.g. 200 KB. An optional unsharp mask is applied after downscaling.
-- **Batch:** a queue with N/P navigation, "apply preset to all", export everything as a ZIP or straight into a folder (Chromium).
-- **Retouch:** paint over an object and it's filled as soon as you let go, either with a flat color or with a smooth (harmonic) fill that recreates gradients and soft shadows. A Restore brush brings original pixels back.
-- **Undo everything:** Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z step through every edit, one brush stroke at a time.
-- **Background removal:** an on-device model (ISNet, Apache-2.0) running on WebGPU or WebAssembly, with live Restore/Erase refinement and an optional background color.
-- **Works offline** once loaded, and installs as an app. In Chromium, installed LocalCrop appears in "Open with…" for images.
-- **No metadata leaks:** EXIF, XMP, IPTC and GPS never reach the output, because it's rebuilt from decoded pixels.
+[![Deploy](https://github.com/rkorsakov1/localcrop/actions/workflows/deploy.yml/badge.svg)](https://github.com/rkorsakov1/localcrop/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Keyboard shortcuts are listed in the app (press `?`). See [VENDOR.md](VENDOR.md) for the vendored runtime assets and model provenance.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/screenshot-dark.jpg">
+  <img alt="LocalCrop: an image queue on the left, a crop box over a photo in the middle, output settings and the exact encoded file size on the right." src=".github/assets/screenshot-light.jpg" width="100%">
+</picture>
+
+</div>
+
+## Why
+
+Most "online image tools" upload your photos to a server. LocalCrop is a static page: decoding, cropping, encoding and even AI background removal all run on your machine, in WebAssembly and WebGPU. There is no backend, no account and no analytics. It works offline once loaded and can be installed as an app.
+
+## Features
+
+**Get images in**
+- Drop files or whole folders, pick them, paste with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd>, fetch a URL, or drop a **ZIP** and it's unpacked.
+- Opens JPEG, PNG, WebP, AVIF, GIF, BMP, ICO, **HEIC/HEIF**, **TIFF**, **SVG**, TGA, PNM and QOI, so it doubles as a format converter.
+
+**Edit**
+- Crop with a locked aspect ratio, or unlock it for a free-form crop; rotate, flip, rule of thirds, fit-and-pad.
+- **Retouch:** paint over an object and it's filled from its surroundings as soon as you let go, with a smooth fill that recreates gradients and soft shadows.
+- **Background removal** with an on-device model (ISNet), with live Restore/Erase brushes and an optional background color.
+- **Undo everything:** every crop, setting and brush stroke is its own step.
+
+**Export**
+- MozJPEG, WebP, AVIF and OxiPNG encoders. The size you see is the size of the file you download.
+- **Target size:** "under 200 KB" finds the best quality that fits.
+- Presets for YouTube, Open Graph, 16:9, 1:1, 4:5, 9:16 and original size, plus your own, shareable as a link.
+- Batch export as a ZIP or straight into a folder, with filename templates.
+- EXIF, GPS and other metadata never reach the output, because it's rebuilt from pixels.
+
+**Everywhere**
+- Light and dark themes, a phone layout with a bottom sheet, and full keyboard control (press <kbd>?</kbd> in the app).
+
+## Browser support
+
+Current Chrome, Edge, Firefox and Safari, on desktop and mobile. Background removal uses WebGPU where available and falls back to WebAssembly (slower). "Save to folder" and "Open with…" for the installed app are Chromium-only.
 
 ## Development
 
@@ -62,7 +90,7 @@ src/pwa/        hand-written service worker + registration
 src/vendor/     vendored codec glue + .wasm
 ```
 
-## Hosting notes and verification
+### Hosting notes and verification
 
 GitHub Pages can't set response headers, so there's no cross-origin isolation and no `SharedArrayBuffer`. All WASM runs single-threaded (ONNX Runtime with `numThreads = 1`), and the Content-Security-Policy is a `<meta>` tag in `index.html`.
 
@@ -75,3 +103,15 @@ Checked with Playwright against the production build in Chrome 153, Firefox 155 
 5. **CSP:** zero violations in all three engines (codecs, ONNX Runtime on WebGPU and WASM, service worker).
 
 Measured: batch export of 30 images blocked the main thread for at most 14 ms. Background removal blocked it for at most 33 ms and took about 8 s on WebGPU, or 24–40 s single-threaded on WASM, including the first download.
+
+## License and credits
+
+LocalCrop is [MIT licensed](LICENSE).
+
+It stands on vendored open-source components, each under its own license (full list with hashes in [VENDOR.md](VENDOR.md)):
+[MozJPEG, libwebp, libavif/libaom and OxiPNG](https://github.com/jamsinclair/jSquash) via jSquash,
+[ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT),
+the [ISNet / DIS](https://github.com/xuebinqin/DIS) background-removal weights (Apache-2.0), and
+[libheif](https://github.com/strukturag/libheif) via [libheif-js](https://github.com/catdad-experiments/libheif-js) (LGPL-3.0, loaded as a separate, unmodified file).
+
+The photo in the screenshot is “Chelsea” from the [scikit-image](https://scikit-image.org/) sample data (CC0).

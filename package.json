@@ -2,6 +2,16 @@
   "name": "localcrop",
   "private": true,
   "version": "0.1.0",
+  "description": "Crop, resize, compress, convert and retouch images entirely in your browser. Nothing is uploaded.",
+  "license": "MIT",
+  "homepage": "https://rkorsakov1.github.io/localcrop/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rkorsakov1/localcrop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rkorsakov1/localcrop/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

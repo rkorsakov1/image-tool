@@ -1,0 +1,27 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please don't attach private photos: a screenshot of the problem, or any public test image, is plenty.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: e.g. Chrome 153 on Windows 11, Safari on iPhone 15
+    validations:
+      required: true
+  - type: input
+    id: format
+    attributes:
+      label: Image format and size (if relevant)
+      placeholder: e.g. HEIC, 4032 × 3024, 2.1 MB
