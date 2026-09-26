@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
-const BASE = '/image-tool/';
+const BASE = '/localcrop/';
 
 /** 32-bit FNV-1a, hex. Only used to version the service worker cache (no Node types needed). */
 const fnv1a = (text: string): string => {

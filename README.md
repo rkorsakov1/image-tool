@@ -2,16 +2,18 @@
 
 A client-side tool for cropping, resizing, compressing and retouching images. Everything runs in your browser, and images never leave your device.
 
-**Live:** https://rkorsakov1.github.io/image-tool/
+**Live:** https://rkorsakov1.github.io/localcrop/
 
 - **Input:** drop files or whole folders, pick files or a folder, paste an image (or an image URL) with Ctrl/Cmd+V, or fetch a URL.
-- **Presets:** YouTube thumbnail, Open Graph, 1080 square and more, plus your own. They're saved in the browser, export/import as JSON, and can be shared as a link (`#preset=…`).
+- **Formats in:** JPEG, PNG, WebP, AVIF, GIF, BMP and ICO through the browser; HEIC/HEIF (natively in Safari, elsewhere via a vendored libheif), TIFF, SVG, TGA, PNM and QOI through bundled decoders. So it also works as a converter: pick “Original size (convert only)” and a format.
+- **Presets:** YouTube thumbnail, Open Graph, 16:9 Full HD, 1:1 square, 4:5 portrait, 9:16 story and original size, plus your own. They're saved in the browser, export/import as JSON, and can be shared as a link (`#preset=…`).
 - **Crop:** aspect-locked crop box (mouse or keyboard), rule of thirds, rotate/flip, fit-and-pad ("contain"), and an upscale guard.
 - **Honest preview:** the output card shows the real encoded file, so the size you see is exactly what you download. Compare view has a before/after slider, zoom and pan.
 - **Encoders:** MozJPEG, libwebp, AVIF (libaom) and OxiPNG compiled to WebAssembly. Target-size mode finds the highest quality under e.g. 200 KB. An optional unsharp mask is applied after downscaling.
 - **Batch:** a queue with N/P navigation, "apply preset to all", export everything as a ZIP or straight into a folder (Chromium).
-- **Retouch:** paint over an object and fill it, either with a flat color or with a smooth (harmonic) fill that recreates gradients and soft shadows.
-- **Background removal:** an on-device model (ISNet, Apache-2.0) running on WebGPU or WebAssembly, with Restore/Erase refinement and an optional background color.
+- **Retouch:** paint over an object and it's filled as soon as you let go, either with a flat color or with a smooth (harmonic) fill that recreates gradients and soft shadows. A Restore brush brings original pixels back.
+- **Undo everything:** Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z step through every edit, one brush stroke at a time.
+- **Background removal:** an on-device model (ISNet, Apache-2.0) running on WebGPU or WebAssembly, with live Restore/Erase refinement and an optional background color.
 - **Works offline** once loaded, and installs as an app. In Chromium, installed LocalCrop appears in "Open with…" for images.
 - **No metadata leaks:** EXIF, XMP, IPTC and GPS never reach the output, because it's rebuilt from decoded pixels.
 
@@ -26,7 +28,7 @@ npm ci
 npm run dev        # dev server (the service worker is only registered in production builds)
 npm test           # unit tests (Vitest)
 npm run build      # type-check + production build into dist/
-npm run preview    # serve dist/ at http://localhost:4173/image-tool/
+npm run preview    # serve dist/ at http://localhost:4173/localcrop/
 ```
 
 ### Deploying
@@ -45,6 +47,7 @@ Runtime assets are **vendored** (committed) so that a rebuild months from now pr
 | jSquash codec glue + `.wasm` (single-threaded) | `src/vendor/jsquash/` (bundled by Vite) |
 | onnxruntime-web 1.30.0 (WebGPU build) | `public/vendor/ort@1.30.0/` |
 | Background-removal model (46.7 MB) | `public/models/isnet-general-use-wq8/` |
+| libheif 1.23.2 (HEIC decoding, LGPL-3.0, loaded on demand) | `public/vendor/libheif@1.23.2/` |
 
 To upgrade a package, edit its version in `scripts/vendor.mjs` and run `npm run vendor`. That re-copies the files and regenerates `VENDOR.md` with SHA-256 hashes. The model's provenance and conversion (`scripts/quantize_weights.py`) are documented in `scripts/vendor-manual.md`.
 

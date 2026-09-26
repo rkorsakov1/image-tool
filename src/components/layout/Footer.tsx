@@ -2,7 +2,7 @@ import { formatBytes } from '../../lib/format';
 import { useApp } from '../../state/AppContext';
 import { focusRing, Keycap } from '../ui/Button';
 
-export const REPO_URL = 'https://github.com/rkorsakov1/image-tool';
+export const REPO_URL = 'https://github.com/rkorsakov1/localcrop';
 
 export const Footer = ({ onShowShortcuts }: { onShowShortcuts: () => void }) => {
   const { state } = useApp();
